@@ -43,16 +43,16 @@ object ScreenCaptureManager {
     private var imageReader: ImageReader? = null
     private val handler = Handler(Looper.getMainLooper())
 
+    // Screenshot dimensions from last setup
+    private var captureWidth: Int = 0
+    private var captureHeight: Int = 0
+
     fun setPermissionResult(code: Int, data: Intent) {
         resultCode = code
         resultData = data
         isGranted = true
     }
 
-    /**
-     * Create MediaProjection from the stored permission result.
-     * Called on the main thread via handler. Token is single-use.
-     */
     private fun doCreateProjection(context: Context): Boolean {
         if (mediaProjection != null) return true
         if (resultData == null) {
@@ -62,16 +62,15 @@ object ScreenCaptureManager {
         return try {
             val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val data = resultData!!
-            // Token consumed — null it out immediately
-            resultData = null
+            resultData = null  // Token consumed
             mediaProjection = mpm.getMediaProjection(resultCode, data)
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
-                    virtualDisplay?.release()
                     virtualDisplay = null
-                    imageReader?.close()
                     imageReader = null
+                    captureWidth = 0
+                    captureHeight = 0
                 }
             }, handler)
             true
@@ -89,7 +88,6 @@ object ScreenCaptureManager {
             return false
         }
         if (resultData != null) {
-            // We have a fresh token — create projection on main thread
             val latch = CountDownLatch(1)
             val result = AtomicReference(false)
             handler.post {
@@ -105,18 +103,54 @@ object ScreenCaptureManager {
             latch.await(3, TimeUnit.SECONDS)
             return result.get()
         }
-        // Projection was lost and token already consumed — need re-grant
         lastError = "MediaProjection lost. Request permission again via /screenshot/grant"
         return false
     }
 
-    fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
-        if (!ensureProjection(context)) return null
+    /**
+     * Set up virtual display and image reader for capture.
+     * Reuses existing display if dimensions match.
+     */
+    private fun ensureVirtualDisplay(context: Context, w: Int, h: Int): Boolean {
+        // Reuse if same dimensions
+        if (virtualDisplay != null && imageReader != null && captureWidth == w && captureHeight == h) {
+            return true
+        }
+
+        // Tear down old resources
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
 
         val proj = mediaProjection ?: run {
             lastError = "MediaProjection is null"
-            return null
+            return false
         }
+
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
+        val density = metrics.densityDpi
+
+        imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        virtualDisplay = proj.createVirtualDisplay(
+            "ClawScreenCapture",
+            w, h, density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader!!.surface,
+            null, handler
+        )
+        captureWidth = w
+        captureHeight = h
+
+        // Give the display a moment to render the first frame
+        Thread.sleep(100)
+        return true
+    }
+
+    fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
+        if (!ensureProjection(context)) return null
 
         try {
             val metrics = DisplayMetrics()
@@ -124,28 +158,15 @@ object ScreenCaptureManager {
             context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
             val w = width ?: metrics.widthPixels
             val h = height ?: metrics.heightPixels
-            val density = metrics.densityDpi
+
+            if (!ensureVirtualDisplay(context, w, h)) return null
 
             val latch = CountDownLatch(1)
             val bitmapRef = AtomicReference<Bitmap>(null)
             val errorRef = AtomicReference<String>(null)
 
-            // Release previous capture resources (but NOT the projection)
-            virtualDisplay?.release()
-            virtualDisplay = null
-            imageReader?.close()
-            imageReader = null
-
-            imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-
-            virtualDisplay = proj.createVirtualDisplay(
-                "ClawScreenCapture",
-                w, h, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader!!.surface,
-                null, handler
-            )
-
+            // Remove any existing listener first
+            imageReader!!.setOnImageAvailableListener(null, null)
             imageReader!!.setOnImageAvailableListener({ reader ->
                 var image: Image? = null
                 try {
@@ -177,7 +198,6 @@ object ScreenCaptureManager {
                 }
             }, handler)
 
-            // Wait for the screenshot (max 3 seconds)
             if (!latch.await(3, TimeUnit.SECONDS)) {
                 lastError = "Screenshot capture timed out (3s)"
                 return null
@@ -191,16 +211,8 @@ object ScreenCaptureManager {
             return bitmapRef.get()
         } catch (e: Exception) {
             lastError = "Capture failed: ${e.message}"
-            // Release capture resources on error, but keep projection alive
-            virtualDisplay?.release()
-            virtualDisplay = null
-            imageReader?.close()
-            imageReader = null
             return null
         }
-        // Note: do NOT release virtualDisplay/imageReader in finally — 
-        // doing so can stop the MediaProjection on some devices.
-        // They'll be cleaned up on next capture call or releaseProjection().
     }
 
     fun releaseProjection() {
@@ -208,6 +220,8 @@ object ScreenCaptureManager {
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
+        captureWidth = 0
+        captureHeight = 0
         mediaProjection?.stop()
         mediaProjection = null
     }
