@@ -5,8 +5,8 @@
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.ACCESSIBILITY_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -38,16 +38,21 @@
             </intent-filter>
         </activity>
 
-        <!-- Foreground Service (keeps everything alive) -->
+        <!-- Foreground Service (keeps HTTP server alive) -->
         <service
             android:name=".service.ClawForegroundService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local HTTP server for device automation" />
+        </service>
 
         <!-- Accessibility Service -->
         <service
             android:name=".service.ClawAccessibilityService"
             android:exported="false"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.intent.action.BIND_ACCESSIBILITY_SERVICE" />
@@ -61,6 +66,7 @@
         <service
             android:name=".service.ClawNotificationListener"
             android:exported="false"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.intent.action.BIND_NOTIFICATION_LISTENER_SERVICE" />
