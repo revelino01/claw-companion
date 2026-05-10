@@ -282,8 +282,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         try {
             val intent = when {
                 req.action != null -> Intent(req.action)
-                req.`package` != null -> context.packageManager.getLaunchIntentForPackage(req.`package`)
-                    ?: return errorResponse(404, "Package not found: ${req.`package`}")
+                req.`package` != null -> {
+                    // Try launch intent first, fallback to MAIN/LAUNCHER
+                    context.packageManager.getLaunchIntentForPackage(req.`package`)
+                        ?: Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_LAUNCHER)
+                            setPackage(req.`package`)
+                        }
+                }
                 else -> return errorResponse(400, "Provide action or package")
             }
 
@@ -295,7 +301,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
 
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-            return json(ApiResponse(true, mapOf("action" to intent.action, "package" to intent.`package`)))
+            return json(ApiResponse(true, mapOf("action" to (intent.action ?: ""), "package" to (req.`package` ?: ""))))
         } catch (e: Exception) {
             return errorResponse(400, "Failed to launch: ${e.message}")
         }
