@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.provider.Telephony
 import android.view.accessibility.AccessibilityNodeInfo
 import ai.openclaw.companion.model.*
+import ai.openclaw.companion.MainActivity
 import ai.openclaw.companion.service.ClawAccessibilityService
 import ai.openclaw.companion.service.ClawForegroundService
 import ai.openclaw.companion.service.ClawNotificationListener
@@ -344,10 +345,9 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
         // Signal MainActivity to request permission
         mainHandler.post {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra("request_media_projection", true)
-            }
+            val intent = Intent(context, MainActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.putExtra("request_media_projection", true)
             context.startActivity(intent)
         }
         return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))

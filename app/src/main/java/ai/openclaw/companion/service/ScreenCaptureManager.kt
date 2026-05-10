@@ -58,7 +58,7 @@ object ScreenCaptureManager {
     }
 
     fun ensureProjection(context: Context): Boolean {
-        if (mediaProjection?.isValid == true) return true
+        if (mediaProjection != null) return true
         if (!isGranted || resultData == null) return false
 
         val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
