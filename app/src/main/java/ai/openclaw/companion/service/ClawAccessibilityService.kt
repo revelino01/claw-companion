@@ -5,7 +5,9 @@ import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -70,9 +72,11 @@ class ClawAccessibilityService : AccessibilityService() {
             text = node.text?.toString() ?: "",
             contentDescription = node.contentDescription?.toString() ?: "",
             viewIdResourceName = node.viewIdResourceName?.toString() ?: "",
-            bounds = node.boundsInScreen?.let { rect ->
+            bounds = run {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
                 "${rect.left},${rect.top},${rect.right},${rect.bottom}"
-            } ?: "",
+            },
             clickable = node.isClickable,
             scrollable = node.isScrollable,
             checked = if (node.isCheckable) node.isChecked else null,
@@ -199,9 +203,10 @@ class ClawAccessibilityService : AccessibilityService() {
         return performGlobalAction(GLOBAL_ACTION_RECENTS)
     }
 
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
     fun pressNotifications(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            performGlobalAction(GLOBAL_ACTION_ACCESS_NOTIFICATIONS)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            performGlobalAction(AccessibilityService.GLOBAL_ACTION_ACCESS_NOTIFICATIONS)
         } else false
     }
 

@@ -137,10 +137,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         if (req.viewId != null) {
             val node = service.findNodeById(req.viewId)
             if (node != null) {
-                results.add(mapOf(
+                results.add(mapOf<String, Any?>(
                     "viewId" to node.viewIdResourceName,
                     "text" to node.text?.toString(),
-                    "bounds" to node.boundsInScreen?.let { "${it.left},${it.top},${it.right},${it.bottom}" },
+                    "bounds" to run {
+                        val rect = Rect()
+                        node.getBoundsInScreen(rect)
+                        "${rect.left},${rect.top},${rect.right},${rect.bottom}"
+                    },
                     "clickable" to node.isClickable
                 ))
                 node.recycle()
@@ -149,10 +153,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         if (req.text != null) {
             val nodes = service.findNodesByText(req.text)
             for (node in nodes) {
-                results.add(mapOf(
+                results.add(mapOf<String, Any?>(
                     "viewId" to node.viewIdResourceName,
                     "text" to node.text?.toString(),
-                    "bounds" to node.boundsInScreen?.let { "${it.left},${it.top},${it.right},${it.bottom}" },
+                    "bounds" to run {
+                        val rect = Rect()
+                        node.getBoundsInScreen(rect)
+                        "${rect.left},${rect.top},${rect.right},${rect.bottom}"
+                    },
                     "clickable" to node.isClickable
                 ))
             }
@@ -305,8 +313,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── Notifications ─────────────────────────────────────────
 
     private fun getNotifications(): Response {
-        val listener = ClawNotificationListener.instance
-        val notifications = listener?.recentNotifications?.toList() ?: emptyList()
+        val notifications = ClawNotificationListener.recentNotifications.toList()
         return json(ApiResponse(true, notifications))
     }
 
@@ -314,7 +321,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         val listener = ClawNotificationListener.instance
             ?: return errorResponse(503, "Notification listener not enabled")
 
-        val body = parseBody(session, Map::class.java) as? Map<String, String>
+        val body = parseJsonBody(session)
             ?: return errorResponse(400, "Invalid request")
         val key = body["key"] ?: return errorResponse(400, "Missing key")
         val success = listener.dismissNotification(key)
@@ -371,7 +378,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     }
 
     private fun sendSms(session: IHTTPSession): Response {
-        val body = parseBody(session, Map::class.java) as? Map<String, String>
+        val body = parseJsonBody(session)
             ?: return errorResponse(400, "Invalid request")
         val address = body["address"] ?: return errorResponse(400, "Missing address")
         val text = body["text"] ?: return errorResponse(400, "Missing text")
@@ -478,7 +485,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     }
 
     private fun setClipboard(session: IHTTPSession): Response {
-        val body = parseBody(session, Map::class.java) as? Map<String, String>
+        val body = parseJsonBody(session)
             ?: return errorResponse(400, "Invalid request")
         val text = body["text"] ?: return errorResponse(400, "Missing text")
 
@@ -576,6 +583,21 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                 // Try query params for GET-style requests
                 null
             }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseJsonBody(session: IHTTPSession): Map<String, String>? {
+        return try {
+            val contentLength = session.headers?.get("content-length")?.toLong() ?: 0L
+            if (contentLength > 0L) {
+                val bodyMap = mutableMapOf<String, String>()
+                session.parseBody(bodyMap)
+                val postData = bodyMap["postData"] ?: return null
+                val type = object : TypeToken<Map<String, String>>() {}.type
+                gson.fromJson<Map<String, String>>(postData, type)
+            } else null
         } catch (e: Exception) {
             null
         }
