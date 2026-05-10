@@ -1,0 +1,71 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew || true
+
+      - name: Build Debug APK
+        run: |
+          cd ${{ github.workspace }}
+          ./gradlew assembleDebug
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: claw-companion-debug
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Build Release APK
+        if: github.event.inputs.release == 'true'
+        run: ./gradlew assembleRelease
+
+      - name: Upload Release APK
+        if: github.event.inputs.release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: claw-companion-release
+          path: app/build/outputs/apk/release/*.apk
+
+      - name: Create Release
+        if: github.event.inputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Claw Companion v1.0.${{ github.run_number }}
+          files: app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false

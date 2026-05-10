@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Claw Companion</string>
+    <string name="accessibility_description">Allows OpenClaw to read the screen, perform gestures, and interact with apps on your behalf.</string>
+    <string name="notification_channel_name">Claw Companion Service</string>
+    <string name="notification_channel_description">Keeps Claw Companion running</string>
+    <string name="service_notification_title">Claw Companion Active</string>
+    <string name="service_notification_text">HTTP server running on port %1$d</string>
+    <string name="permission_accessibility">Accessibility Service</string>
+    <string name="permission_notification">Notification Access</string>
+    <string name="permission_overlay">Draw Over Other Apps</string>
+    <string name="status_running">Running on port %1$d</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="btn_start">Start Service</string>
+    <string name="btn_stop">Stop Service</string>
+    <string name="btn_enable">Enable</string>
+</resources>
