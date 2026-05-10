@@ -324,7 +324,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
 
         val bitmap = ScreenCaptureManager.captureScreenshot(context)
-            ?: return errorResponse(500, "Failed to capture screenshot")
+            ?: return errorResponse(500, ScreenCaptureManager.lastError ?: "Failed to capture screenshot")
 
         val format = when (params["format"]?.lowercase()) {
             "jpeg", "jpg" -> Pair(Bitmap.CompressFormat.JPEG, "image/jpeg")
@@ -363,7 +363,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
 
         val bitmap = ScreenCaptureManager.captureScreenshot(context)
-            ?: return errorResponse(500, "Failed to capture screenshot for OCR")
+            ?: return errorResponse(500, "Screenshot failed: " + (ScreenCaptureManager.lastError ?: "unknown error"))
 
         val inputImage = InputImage.fromBitmap(bitmap, 0)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)

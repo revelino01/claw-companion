@@ -10,7 +10,6 @@ import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
@@ -19,16 +18,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Manages MediaProjection for screen capture.
- * 
- * Flow:
- * 1. User requests /screenshot or /ocr
- * 2. If no active projection, returns 402 with instructions to grant permission
- * 3. User triggers /screenshot/grant which opens the system permission dialog
- * 4. Result comes back via onActivityResult → we get the MediaProjection
- * 5. Subsequent /screenshot and /ocr calls work without re-prompting
- */
 object ScreenCaptureManager {
 
     @Volatile
@@ -47,6 +36,10 @@ object ScreenCaptureManager {
     var isGranted: Boolean = false
         private set
 
+    @Volatile
+    var lastError: String? = null
+        private set
+
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -59,36 +52,46 @@ object ScreenCaptureManager {
 
     fun ensureProjection(context: Context): Boolean {
         if (mediaProjection != null) return true
-        if (!isGranted || resultData == null) return false
+        if (!isGranted || resultData == null) {
+            lastError = "MediaProjection permission not granted yet"
+            return false
+        }
 
-        val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mpm.getMediaProjection(resultCode, resultData!!)
-        return true
+        return try {
+            val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            mediaProjection = mpm.getMediaProjection(resultCode, resultData!!)
+            mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    mediaProjection = null
+                }
+            }, handler)
+            true
+        } catch (e: Exception) {
+            lastError = "Failed to create MediaProjection: ${e.message}"
+            mediaProjection = null
+            false
+        }
     }
 
-    /**
-     * Capture a screenshot. Returns the Bitmap or null.
-     * Must be called after ensureProjection succeeds.
-     */
     fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
         if (!ensureProjection(context)) return null
 
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
-        val w = width ?: metrics.widthPixels
-        val h = height ?: metrics.heightPixels
-        val density = metrics.densityDpi
-
-        val latch = CountDownLatch(1)
-        val bitmapRef = AtomicReference<Bitmap>(null)
-
-        // Clean up previous resources
-        cleanup()
-
-        imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-
         try {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
+            val w = width ?: metrics.widthPixels
+            val h = height ?: metrics.heightPixels
+            val density = metrics.densityDpi
+
+            val latch = CountDownLatch(1)
+            val bitmapRef = AtomicReference<Bitmap>(null)
+            val errorRef = AtomicReference<String>(null)
+
+            cleanup()
+
+            imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+
             virtualDisplay = mediaProjection!!.createVirtualDisplay(
                 "ClawScreenCapture",
                 w, h, density,
@@ -112,7 +115,6 @@ object ScreenCaptureManager {
                         val bitmap = Bitmap.createBitmap(bitmapWidth, h, Bitmap.Config.ARGB_8888)
                         bitmap.copyPixelsFromBuffer(buffer)
 
-                        // Crop if there's padding
                         val croppedBitmap = if (rowPadding > 0) {
                             Bitmap.createBitmap(bitmap, 0, 0, w, h)
                         } else {
@@ -122,6 +124,7 @@ object ScreenCaptureManager {
                         latch.countDown()
                     }
                 } catch (e: Exception) {
+                    errorRef.set("Image processing failed: ${e.message}")
                     latch.countDown()
                 } finally {
                     image?.close()
@@ -129,20 +132,27 @@ object ScreenCaptureManager {
             }, handler)
 
             // Wait for the screenshot (max 3 seconds)
-            latch.await(3, TimeUnit.SECONDS)
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                lastError = "Screenshot capture timed out (3s)"
+                return null
+            }
 
+            if (bitmapRef.get() == null) {
+                lastError = errorRef.get() ?: "No image captured"
+                return null
+            }
+
+            return bitmapRef.get()
         } catch (e: Exception) {
+            lastError = "Capture failed: ${e.message}"
             cleanup()
             return null
         } finally {
-            // Clean up virtual display and image reader but keep media projection alive
             virtualDisplay?.release()
             virtualDisplay = null
             imageReader?.close()
             imageReader = null
         }
-
-        return bitmapRef.get()
     }
 
     fun cleanup() {
