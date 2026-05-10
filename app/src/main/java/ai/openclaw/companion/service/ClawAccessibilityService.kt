@@ -203,11 +203,13 @@ class ClawAccessibilityService : AccessibilityService() {
         return performGlobalAction(GLOBAL_ACTION_RECENTS)
     }
 
-    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
     fun pressNotifications(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            performGlobalAction(AccessibilityService.GLOBAL_ACTION_ACCESS_NOTIFICATIONS)
-        } else false
+            // GLOBAL_ACTION_ACCESS_NOTIFICATIONS = 8 (added in API 31)
+            performGlobalAction(8)
+        } else {
+            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+        }
     }
 
     fun pressQuickSettings(): Boolean {
