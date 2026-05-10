@@ -13,7 +13,6 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -48,23 +47,36 @@ object ScreenCaptureManager {
         resultCode = code
         resultData = data
         isGranted = true
+        // Immediately create the projection — the token can only be used once
+        createProjectionIfNeeded = true
     }
 
-    fun ensureProjection(context: Context): Boolean {
+    @Volatile
+    private var createProjectionNeeded: Boolean = false
+
+    /**
+     * Create MediaProjection from the stored permission result.
+     * Must be called on a thread with a Looper (we use the main handler).
+     * The resultData token can only be used ONCE, so we create the projection
+     * immediately and keep it alive for reuse.
+     */
+    private fun doCreateProjection(context: Context): Boolean {
         if (mediaProjection != null) return true
-        if (!isGranted || resultData == null) {
-            lastError = "MediaProjection permission not granted yet"
+        if (resultData == null) {
+            lastError = "No permission result data"
             return false
         }
-
         return try {
             val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mpm.getMediaProjection(resultCode, resultData!!)
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
+                    createProjectionNeeded = false
                 }
             }, handler)
+            // Token has been consumed — don't try to reuse it
+            resultData = null
             true
         } catch (e: Exception) {
             lastError = "Failed to create MediaProjection: ${e.message}"
@@ -73,8 +85,41 @@ object ScreenCaptureManager {
         }
     }
 
+    fun ensureProjection(context: Context): Boolean {
+        if (mediaProjection != null) return true
+        if (!isGranted) {
+            lastError = "MediaProjection permission not granted yet"
+            return false
+        }
+        if (createProjectionNeeded) {
+            // Post to main thread to create the projection
+            val latch = CountDownLatch(1)
+            val result = AtomicReference(false)
+            handler.post {
+                try {
+                    result.set(doCreateProjection(context))
+                } catch (e: Exception) {
+                    lastError = "Projection creation error: ${e.message}"
+                    result.set(false)
+                } finally {
+                    latch.countDown()
+                }
+            }
+            latch.await(3, TimeUnit.SECONDS)
+            return result.get()
+        }
+        // Projection was lost and token already consumed — need re-grant
+        lastError = "MediaProjection lost. Request permission again via /screenshot/grant"
+        return false
+    }
+
     fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
         if (!ensureProjection(context)) return null
+
+        val proj = mediaProjection ?: run {
+            lastError = "MediaProjection is null"
+            return null
+        }
 
         try {
             val metrics = DisplayMetrics()
@@ -88,11 +133,12 @@ object ScreenCaptureManager {
             val bitmapRef = AtomicReference<Bitmap>(null)
             val errorRef = AtomicReference<String>(null)
 
-            cleanup()
+            // Clean up previous capture resources
+            cleanupCapture()
 
             imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
 
-            virtualDisplay = mediaProjection!!.createVirtualDisplay(
+            virtualDisplay = proj.createVirtualDisplay(
                 "ClawScreenCapture",
                 w, h, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -145,9 +191,10 @@ object ScreenCaptureManager {
             return bitmapRef.get()
         } catch (e: Exception) {
             lastError = "Capture failed: ${e.message}"
-            cleanup()
+            cleanupCapture()
             return null
         } finally {
+            // Release virtual display and image reader but keep MediaProjection alive
             virtualDisplay?.release()
             virtualDisplay = null
             imageReader?.close()
@@ -155,15 +202,19 @@ object ScreenCaptureManager {
         }
     }
 
-    fun cleanup() {
+    private fun cleanupCapture() {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
     }
 
+    fun cleanup() {
+        cleanupCapture()
+    }
+
     fun releaseProjection() {
-        cleanup()
+        cleanupCapture()
         mediaProjection?.stop()
         mediaProjection = null
     }

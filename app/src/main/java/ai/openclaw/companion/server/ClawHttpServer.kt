@@ -350,9 +350,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     }
 
     private fun requestScreenshotGrant(): Response {
-        if (ScreenCaptureManager.isGranted) {
-            return json(ApiResponse(true, mapOf("message" to "MediaProjection already granted")))
+        // Release any stale projection so the new grant creates a fresh one
+        ScreenCaptureManager.releaseProjection()
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("request_media_projection", true)
         }
+        context.startActivity(intent)
+        return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))
         // Signal MainActivity to request permission
         mainHandler.post {
             val intent = Intent(context, MainActivity::class.java)
