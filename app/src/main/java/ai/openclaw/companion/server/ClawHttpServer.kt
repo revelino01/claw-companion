@@ -86,6 +86,8 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
 
                 // ─── Screenshot ─────────────────────────────
                 uri == "/screenshot" && method == Method.GET -> screenshot(params)
+                uri == "/screenshot/grant" && method == Method.GET -> requestScreenshotGrant()
+                uri == "/ocr" && method == Method.GET -> ocr(params)
 
                 // ─── Notifications ──────────────────────────
                 uri == "/notifications" && method == Method.GET -> getNotifications()
