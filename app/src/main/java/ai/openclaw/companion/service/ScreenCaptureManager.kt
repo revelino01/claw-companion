@@ -43,14 +43,8 @@ object ScreenCaptureManager {
     private var imageReader: ImageReader? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    // Dimensions of current virtual display
     private var captureWidth: Int = 0
     private var captureHeight: Int = 0
-
-    // Pending image from OnImageAvailableListener
-    @Volatile
-    private var pendingImage: Image? = null
-    private val imageLock = Object()
 
     fun setPermissionResult(code: Int, data: Intent) {
         resultCode = code
@@ -72,11 +66,6 @@ object ScreenCaptureManager {
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
-                    // Clean up everything on projection stop
-                    synchronized(imageLock) {
-                        pendingImage?.close()
-                        pendingImage = null
-                    }
                     virtualDisplay?.release()
                     virtualDisplay = null
                     imageReader?.close()
@@ -119,59 +108,13 @@ object ScreenCaptureManager {
         return false
     }
 
-    /**
-     * Set up or reuse the virtual display and image reader.
-     * Keeps the OnImageAvailableListener active so the surface stays alive.
-     */
-    private fun ensureVirtualDisplay(context: Context, w: Int, h: Int): Boolean {
-        // Reuse if same dimensions and still valid
-        if (virtualDisplay != null && imageReader != null && captureWidth == w && captureHeight == h) {
-            return true
-        }
-
-        // Tear down old resources
-        virtualDisplay?.release()
-        virtualDisplay = null
-        imageReader?.close()
-        imageReader = null
+    fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
+        if (!ensureProjection(context)) return null
 
         val proj = mediaProjection ?: run {
             lastError = "MediaProjection is null"
-            return false
+            return null
         }
-
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
-        val density = metrics.densityDpi
-
-        imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-
-        // Set up persistent listener that stores the latest image
-        imageReader!!.setOnImageAvailableListener({ reader ->
-            synchronized(imageLock) {
-                pendingImage?.close()
-                pendingImage = reader.acquireLatestImage()
-            }
-        }, handler)
-
-        virtualDisplay = proj.createVirtualDisplay(
-            "ClawScreenCapture",
-            w, h, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader!!.surface,
-            null, handler
-        )
-        captureWidth = w
-        captureHeight = h
-
-        // Wait for first frame
-        Thread.sleep(200)
-        return true
-    }
-
-    fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
-        if (!ensureProjection(context)) return null
 
         try {
             val metrics = DisplayMetrics()
@@ -179,18 +122,47 @@ object ScreenCaptureManager {
             context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
             val w = width ?: metrics.widthPixels
             val h = height ?: metrics.heightPixels
+            val density = metrics.densityDpi
 
-            if (!ensureVirtualDisplay(context, w, h)) return null
+            // Always recreate ImageReader + VirtualDisplay per capture
+            // Android prohibits createVirtualDisplay multiple times on same MediaProjection,
+            // but we keep the same VirtualDisplay alive and just recreate the ImageReader.
+            // Actually, we MUST reuse the same VirtualDisplay. The issue is we can't create
+            // a new surface on it. So we reuse everything.
+            
+            val needSetup = virtualDisplay == null || imageReader == null || captureWidth != w || captureHeight != h
 
-            // Wait for a fresh frame (up to 2 seconds)
+            if (needSetup) {
+                // Tear down old
+                virtualDisplay?.release()
+                virtualDisplay = null
+                imageReader?.close()
+                imageReader = null
+
+                imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+                virtualDisplay = proj.createVirtualDisplay(
+                    "ClawScreenCapture",
+                    w, h, density,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    imageReader!!.surface,
+                    null, handler
+                )
+                captureWidth = w
+                captureHeight = h
+
+                // Wait for first frame to render
+                Thread.sleep(300)
+            }
+
+            // Now capture from the persistent ImageReader
+            // Poll for an available image (up to 2 seconds)
             var image: Image? = null
             val startTime = System.currentTimeMillis()
             while (image == null && System.currentTimeMillis() - startTime < 2000) {
-                synchronized(imageLock) {
-                    image = pendingImage
-                    if (image != null) {
-                        pendingImage = null
-                    }
+                try {
+                    image = imageReader!!.acquireLatestImage()
+                } catch (e: Exception) {
+                    // Image may not be available yet
                 }
                 if (image == null) {
                     Thread.sleep(50)
@@ -198,7 +170,7 @@ object ScreenCaptureManager {
             }
 
             if (image == null) {
-                lastError = "No frame available after 2s"
+                lastError = "No frame available after 2s (imageReader state: ${imageReader?.width}x${imageReader?.height})"
                 return null
             }
 
@@ -213,12 +185,11 @@ object ScreenCaptureManager {
                 val bitmap = Bitmap.createBitmap(bitmapWidth, h, Bitmap.Config.ARGB_8888)
                 bitmap.copyPixelsFromBuffer(buffer)
 
-                val croppedBitmap = if (rowPadding > 0) {
+                return if (rowPadding > 0) {
                     Bitmap.createBitmap(bitmap, 0, 0, w, h)
                 } else {
                     bitmap
                 }
-                return croppedBitmap
             } finally {
                 image?.close()
             }
@@ -229,10 +200,6 @@ object ScreenCaptureManager {
     }
 
     fun releaseProjection() {
-        synchronized(imageLock) {
-            pendingImage?.close()
-            pendingImage = null
-        }
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
