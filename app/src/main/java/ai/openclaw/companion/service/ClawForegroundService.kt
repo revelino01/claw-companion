@@ -41,8 +41,13 @@ class ClawForegroundService : Service() {
 
         createNotificationChannel()
         val notification = buildNotification(ClawApp.DEFAULT_PORT)
-        startForeground(NOTIFICATION_ID, notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        } else {
+            @Suppress("DEPRECATION")
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         // Acquire partial wake lock to keep service alive
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager

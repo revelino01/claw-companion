@@ -52,7 +52,7 @@ class ClawAccessibilityService : AccessibilityService() {
     // ─── UI Tree ──────────────────────────────────────────────
 
     fun dumpUiTree(): TreeNode {
-        val root = rootInActiveWindow ?: return TreeNode("empty", "No active window", "", "", emptyList())
+        val root = rootInActiveWindow ?: return TreeNode("empty", "No active window", "", "", "")
         return buildTree(root)
     }
 

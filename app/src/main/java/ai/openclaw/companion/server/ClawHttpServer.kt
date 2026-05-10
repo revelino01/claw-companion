@@ -29,6 +29,16 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun serve(session: IHTTPSession): Response {
+        // Handle CORS preflight
+        if (session.method == Method.OPTIONS) {
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", "").apply {
+                addHeader("Access-Control-Allow-Origin", "*")
+                addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                addHeader("Access-Control-Allow-Headers", "Content-Type")
+                addHeader("Access-Control-Max-Age", "86400")
+            }
+        }
+
         val uri = session.uri ?: return errorResponse(400, "No URI")
         val method = session.method
         val params = parseParams(session)
@@ -601,16 +611,5 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        // Handle CORS preflight
-        if (session.method == Method.OPTIONS) {
-            return newFixedLengthResponse(Response.Status.OK, "text/plain", "").apply {
-                addHeader("Access-Control-Allow-Origin", "*")
-                addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                addHeader("Access-Control-Allow-Headers", "Content-Type")
-                addHeader("Access-Control-Max-Age", "86400")
-            }
-        }
-        return super.serve(session)
-    }
+
 }
