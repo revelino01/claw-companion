@@ -3,18 +3,17 @@ name: Build APK
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      release:
-        description: 'Create release'
+      release_type:
+        description: 'Release type'
         required: false
-        default: 'false'
+        default: 'patch'
         type: choice
         options:
-          - 'false'
-          - 'true'
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -25,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -43,29 +44,68 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: claw-companion-debug
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Build Release APK
-        if: github.event.inputs.release == 'true'
-        run: ./gradlew assembleRelease
+      - name: Get version info
+        id: version
+        run: |
+          # Get the latest release tag, default to v0.0.0 if none
+          LATEST_TAG=$(git tag --sort=-v:refname | head -1 || echo "v0.0.0")
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          
+          # Parse current version
+          if [[ "$LATEST_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+          else
+            MAJOR=0
+            MINOR=0
+            PATCH=0
+          fi
+          
+          # Determine release type
+          RELEASE_TYPE="${{ github.event.inputs.release_type || 'patch' }}"
+          
+          # Increment version
+          case "$RELEASE_TYPE" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          
+          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building release $VERSION"
 
-      - name: Upload Release APK
-        if: github.event.inputs.release == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: claw-companion-release
-          path: app/build/outputs/apk/release/*.apk
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cp app/build/outputs/apk/debug/*.apk "claw-companion-${VERSION}.apk"
+          echo "APK_NAME=claw-companion-${VERSION}.apk" >> $GITHUB_ENV
 
-      - name: Create Release
-        if: github.event.inputs.release == 'true'
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Claw Companion v1.0.${{ github.run_number }}
-          files: app/build/outputs/apk/release/*.apk
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Claw Companion ${{ steps.version.outputs.version }}
+          body: |
+            ## Claw Companion ${{ steps.version.outputs.version }}
+            
+            Android companion app for OpenClaw — replaces ADB with a local HTTP API.
+            
+            ### Installation
+            1. Download the APK below
+            2. Install on your Android device
+            3. Enable Accessibility Service, Notification Listener, and required permissions
+            4. Start the service — runs on `http://localhost:18790`
+            
+            ### API Endpoints
+            `/ui` `/tap` `/swipe` `/press` `/type` `/intent` `/notifications` `/sms` `/contacts` `/calls` `/clipboard` `/device` `/packages`
+          files: claw-companion-*.apk
           draft: false
           prerelease: false
