@@ -47,18 +47,11 @@ object ScreenCaptureManager {
         resultCode = code
         resultData = data
         isGranted = true
-        // Immediately create the projection — the token can only be used once
-        createProjectionNeeded = true
     }
-
-    @Volatile
-    private var createProjectionNeeded: Boolean = false
 
     /**
      * Create MediaProjection from the stored permission result.
-     * Must be called on a thread with a Looper (we use the main handler).
-     * The resultData token can only be used ONCE, so we create the projection
-     * immediately and keep it alive for reuse.
+     * Called on the main thread via handler. Token is single-use.
      */
     private fun doCreateProjection(context: Context): Boolean {
         if (mediaProjection != null) return true
@@ -68,15 +61,19 @@ object ScreenCaptureManager {
         }
         return try {
             val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjection = mpm.getMediaProjection(resultCode, resultData!!)
+            val data = resultData!!
+            // Token consumed — null it out immediately
+            resultData = null
+            mediaProjection = mpm.getMediaProjection(resultCode, data)
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
-                    createProjectionNeeded = false
+                    virtualDisplay?.release()
+                    virtualDisplay = null
+                    imageReader?.close()
+                    imageReader = null
                 }
             }, handler)
-            // Token has been consumed — don't try to reuse it
-            resultData = null
             true
         } catch (e: Exception) {
             lastError = "Failed to create MediaProjection: ${e.message}"
@@ -91,8 +88,8 @@ object ScreenCaptureManager {
             lastError = "MediaProjection permission not granted yet"
             return false
         }
-        if (createProjectionNeeded) {
-            // Post to main thread to create the projection
+        if (resultData != null) {
+            // We have a fresh token — create projection on main thread
             val latch = CountDownLatch(1)
             val result = AtomicReference(false)
             handler.post {
@@ -133,8 +130,11 @@ object ScreenCaptureManager {
             val bitmapRef = AtomicReference<Bitmap>(null)
             val errorRef = AtomicReference<String>(null)
 
-            // Clean up previous capture resources
-            cleanupCapture()
+            // Release previous capture resources (but NOT the projection)
+            virtualDisplay?.release()
+            virtualDisplay = null
+            imageReader?.close()
+            imageReader = null
 
             imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
 
@@ -191,30 +191,23 @@ object ScreenCaptureManager {
             return bitmapRef.get()
         } catch (e: Exception) {
             lastError = "Capture failed: ${e.message}"
-            cleanupCapture()
-            return null
-        } finally {
-            // Release virtual display and image reader but keep MediaProjection alive
+            // Release capture resources on error, but keep projection alive
             virtualDisplay?.release()
             virtualDisplay = null
             imageReader?.close()
             imageReader = null
+            return null
         }
+        // Note: do NOT release virtualDisplay/imageReader in finally — 
+        // doing so can stop the MediaProjection on some devices.
+        // They'll be cleaned up on next capture call or releaseProjection().
     }
 
-    private fun cleanupCapture() {
+    fun releaseProjection() {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
-    }
-
-    fun cleanup() {
-        cleanupCapture()
-    }
-
-    fun releaseProjection() {
-        cleanupCapture()
         mediaProjection?.stop()
         mediaProjection = null
     }
