@@ -43,9 +43,14 @@ object ScreenCaptureManager {
     private var imageReader: ImageReader? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    // Screenshot dimensions from last setup
+    // Dimensions of current virtual display
     private var captureWidth: Int = 0
     private var captureHeight: Int = 0
+
+    // Pending image from OnImageAvailableListener
+    @Volatile
+    private var pendingImage: Image? = null
+    private val imageLock = Object()
 
     fun setPermissionResult(code: Int, data: Intent) {
         resultCode = code
@@ -62,12 +67,19 @@ object ScreenCaptureManager {
         return try {
             val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val data = resultData!!
-            resultData = null  // Token consumed
+            resultData = null
             mediaProjection = mpm.getMediaProjection(resultCode, data)
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
+                    // Clean up everything on projection stop
+                    synchronized(imageLock) {
+                        pendingImage?.close()
+                        pendingImage = null
+                    }
+                    virtualDisplay?.release()
                     virtualDisplay = null
+                    imageReader?.close()
                     imageReader = null
                     captureWidth = 0
                     captureHeight = 0
@@ -108,11 +120,11 @@ object ScreenCaptureManager {
     }
 
     /**
-     * Set up virtual display and image reader for capture.
-     * Reuses existing display if dimensions match.
+     * Set up or reuse the virtual display and image reader.
+     * Keeps the OnImageAvailableListener active so the surface stays alive.
      */
     private fun ensureVirtualDisplay(context: Context, w: Int, h: Int): Boolean {
-        // Reuse if same dimensions
+        // Reuse if same dimensions and still valid
         if (virtualDisplay != null && imageReader != null && captureWidth == w && captureHeight == h) {
             return true
         }
@@ -134,6 +146,15 @@ object ScreenCaptureManager {
         val density = metrics.densityDpi
 
         imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+
+        // Set up persistent listener that stores the latest image
+        imageReader!!.setOnImageAvailableListener({ reader ->
+            synchronized(imageLock) {
+                pendingImage?.close()
+                pendingImage = reader.acquireLatestImage()
+            }
+        }, handler)
+
         virtualDisplay = proj.createVirtualDisplay(
             "ClawScreenCapture",
             w, h, density,
@@ -144,8 +165,8 @@ object ScreenCaptureManager {
         captureWidth = w
         captureHeight = h
 
-        // Give the display a moment to render the first frame
-        Thread.sleep(100)
+        // Wait for first frame
+        Thread.sleep(200)
         return true
     }
 
@@ -161,54 +182,46 @@ object ScreenCaptureManager {
 
             if (!ensureVirtualDisplay(context, w, h)) return null
 
-            val latch = CountDownLatch(1)
-            val bitmapRef = AtomicReference<Bitmap>(null)
-            val errorRef = AtomicReference<String>(null)
-
-            // Remove any existing listener first
-            imageReader!!.setOnImageAvailableListener(null, null)
-            imageReader!!.setOnImageAvailableListener({ reader ->
-                var image: Image? = null
-                try {
-                    image = reader.acquireLatestImage()
+            // Wait for a fresh frame (up to 2 seconds)
+            var image: Image? = null
+            val startTime = System.currentTimeMillis()
+            while (image == null && System.currentTimeMillis() - startTime < 2000) {
+                synchronized(imageLock) {
+                    image = pendingImage
                     if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-                        val rowPadding = rowStride - pixelStride * w
-
-                        val bitmapWidth = w + rowPadding / pixelStride
-                        val bitmap = Bitmap.createBitmap(bitmapWidth, h, Bitmap.Config.ARGB_8888)
-                        bitmap.copyPixelsFromBuffer(buffer)
-
-                        val croppedBitmap = if (rowPadding > 0) {
-                            Bitmap.createBitmap(bitmap, 0, 0, w, h)
-                        } else {
-                            bitmap
-                        }
-                        bitmapRef.set(croppedBitmap)
-                        latch.countDown()
+                        pendingImage = null
                     }
-                } catch (e: Exception) {
-                    errorRef.set("Image processing failed: ${e.message}")
-                    latch.countDown()
-                } finally {
-                    image?.close()
                 }
-            }, handler)
+                if (image == null) {
+                    Thread.sleep(50)
+                }
+            }
 
-            if (!latch.await(3, TimeUnit.SECONDS)) {
-                lastError = "Screenshot capture timed out (3s)"
+            if (image == null) {
+                lastError = "No frame available after 2s"
                 return null
             }
 
-            if (bitmapRef.get() == null) {
-                lastError = errorRef.get() ?: "No image captured"
-                return null
-            }
+            try {
+                val planes = image!!.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * w
 
-            return bitmapRef.get()
+                val bitmapWidth = w + rowPadding / pixelStride
+                val bitmap = Bitmap.createBitmap(bitmapWidth, h, Bitmap.Config.ARGB_8888)
+                bitmap.copyPixelsFromBuffer(buffer)
+
+                val croppedBitmap = if (rowPadding > 0) {
+                    Bitmap.createBitmap(bitmap, 0, 0, w, h)
+                } else {
+                    bitmap
+                }
+                return croppedBitmap
+            } finally {
+                image?.close()
+            }
         } catch (e: Exception) {
             lastError = "Capture failed: ${e.message}"
             return null
@@ -216,6 +229,10 @@ object ScreenCaptureManager {
     }
 
     fun releaseProjection() {
+        synchronized(imageLock) {
+            pendingImage?.close()
+            pendingImage = null
+        }
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
