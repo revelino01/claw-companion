@@ -55,7 +55,7 @@
             android:label="@string/app_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
-                <action android:name="android.intent.action.BIND_ACCESSIBILITY_SERVICE" />
+                <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
                 android:name="android.accessibilityservice"
@@ -69,7 +69,7 @@
             android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
-                <action android:name="android.intent.action.BIND_NOTIFICATION_LISTENER_SERVICE" />
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 
