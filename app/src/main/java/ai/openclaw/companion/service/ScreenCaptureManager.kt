@@ -24,14 +24,6 @@ object ScreenCaptureManager {
         private set
 
     @Volatile
-    var resultCode: Int = 0
-        private set
-
-    @Volatile
-    var resultData: Intent? = null
-        private set
-
-    @Volatile
     var isGranted: Boolean = false
         private set
 
@@ -43,41 +35,103 @@ object ScreenCaptureManager {
     private var imageReader: ImageReader? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    private var captureWidth: Int = 0
-    private var captureHeight: Int = 0
+    private var vdWidth: Int = 0
+    private var vdHeight: Int = 0
+
+    // Stored latest frame from persistent listener
+    @Volatile
+    private var latestImage: Image? = null
+    private val frameLock = Any()
+
+    // Permission result (consumed once)
+    private var pendingResultCode: Int = 0
+    private var pendingResultData: Intent? = null
 
     fun setPermissionResult(code: Int, data: Intent) {
-        resultCode = code
-        resultData = data
+        pendingResultCode = code
+        pendingResultData = data
         isGranted = true
     }
 
-    private fun doCreateProjection(context: Context): Boolean {
+    /**
+     * Create everything ONCE: MediaProjection + VirtualDisplay + ImageReader.
+     * Called on main thread via handler.
+     * The Intent token is single-use, so we consume it immediately.
+     */
+    private fun doCreateEverything(context: Context): Boolean {
         if (mediaProjection != null) return true
-        if (resultData == null) {
-            lastError = "No permission result data"
+        if (pendingResultData == null) {
+            lastError = "No permission result. Call /screenshot/grant first."
             return false
         }
         return try {
             val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            val data = resultData!!
-            resultData = null
-            mediaProjection = mpm.getMediaProjection(resultCode, data)
+            val data = pendingResultData!!
+            pendingResultData = null  // Token consumed
+
+            mediaProjection = mpm.getMediaProjection(pendingResultCode, data)
+
+            // Register callback BEFORE createVirtualDisplay (per Android docs)
             mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
-                    virtualDisplay?.release()
                     virtualDisplay = null
-                    imageReader?.close()
                     imageReader = null
-                    captureWidth = 0
-                    captureHeight = 0
+                    synchronized(frameLock) {
+                        latestImage?.close()
+                        latestImage = null
+                    }
                 }
             }, handler)
+
+            // Set up ImageReader with persistent listener
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.view.WindowManager::class.java)
+                .defaultDisplay.getMetrics(metrics)
+            vdWidth = metrics.widthPixels
+            vdHeight = metrics.heightPixels
+
+            imageReader = ImageReader.newInstance(vdWidth, vdHeight, PixelFormat.RGBA_8888, 2)
+
+            // Persistent listener — always stores the latest frame
+            imageReader!!.setOnImageAvailableListener({ reader ->
+                synchronized(frameLock) {
+                    latestImage?.close()
+                    latestImage = reader.acquireLatestImage()
+                }
+            }, handler)
+
+            // Create VirtualDisplay with NON-NULL callback (critical for proper lifecycle)
+            virtualDisplay = mediaProjection!!.createVirtualDisplay(
+                "ClawCompanion",
+                vdWidth, vdHeight, metrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader!!.surface,
+                object : VirtualDisplay.Callback() {
+                    override fun onStopped() {
+                        virtualDisplay = null
+                        synchronized(frameLock) {
+                            latestImage?.close()
+                            latestImage = null
+                        }
+                    }
+                    override fun onPaused() {}
+                    override fun onResumed() {}
+                },
+                handler
+            )
+
+            // Wait for first frame to arrive
+            Thread.sleep(300)
             true
         } catch (e: Exception) {
-            lastError = "Failed to create MediaProjection: ${e.message}"
+            lastError = "Setup failed: ${e.message}"
+            mediaProjection?.stop()
             mediaProjection = null
+            imageReader?.close()
+            imageReader = null
+            virtualDisplay = null
             false
         }
     }
@@ -85,15 +139,15 @@ object ScreenCaptureManager {
     fun ensureProjection(context: Context): Boolean {
         if (mediaProjection != null) return true
         if (!isGranted) {
-            lastError = "MediaProjection permission not granted yet"
+            lastError = "Not granted. Call /screenshot/grant first."
             return false
         }
-        if (resultData != null) {
+        if (pendingResultData != null) {
             val latch = CountDownLatch(1)
             val result = AtomicReference(false)
             handler.post {
                 try {
-                    result.set(doCreateProjection(context))
+                    result.set(doCreateEverything(context))
                 } catch (e: Exception) {
                     lastError = "Projection creation error: ${e.message}"
                     result.set(false)
@@ -101,112 +155,68 @@ object ScreenCaptureManager {
                     latch.countDown()
                 }
             }
-            latch.await(3, TimeUnit.SECONDS)
+            latch.await(5, TimeUnit.SECONDS)
             return result.get()
         }
-        lastError = "MediaProjection lost. Request permission again via /screenshot/grant"
+        lastError = "Projection lost. Re-grant via /screenshot/grant."
         return false
     }
 
+    /**
+     * Grab the latest frame from the persistent stream.
+     * VirtualDisplay + ImageReader stay alive — we just take the current frame.
+     */
     fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
         if (!ensureProjection(context)) return null
 
-        val proj = mediaProjection ?: run {
-            lastError = "MediaProjection is null"
+        // Wait for a frame to be available (up to 2 seconds)
+        var img: Image? = null
+        val start = System.currentTimeMillis()
+        while (img == null && System.currentTimeMillis() - start < 2000) {
+            synchronized(frameLock) {
+                img = latestImage
+                latestImage = null  // take ownership
+            }
+            if (img == null) Thread.sleep(50)
+        }
+
+        if (img == null) {
+            lastError = "No frame available after 2s (vd=${virtualDisplay != null}, ir=${imageReader != null}, mp=${mediaProjection != null})"
             return null
         }
 
-        try {
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            context.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getMetrics(metrics)
-            val w = width ?: metrics.widthPixels
-            val h = height ?: metrics.heightPixels
-            val density = metrics.densityDpi
+        return try {
+            val planes = img!!.planes
+            val buffer = planes[0].buffer
+            val pixelStride = planes[0].pixelStride
+            val rowStride = planes[0].rowStride
+            val rowPadding = rowStride - pixelStride * vdWidth
 
-            // Always recreate ImageReader + VirtualDisplay per capture
-            // Android prohibits createVirtualDisplay multiple times on same MediaProjection,
-            // but we keep the same VirtualDisplay alive and just recreate the ImageReader.
-            // Actually, we MUST reuse the same VirtualDisplay. The issue is we can't create
-            // a new surface on it. So we reuse everything.
-            
-            val needSetup = virtualDisplay == null || imageReader == null || captureWidth != w || captureHeight != h
+            val bitmapWidth = vdWidth + rowPadding / pixelStride
+            val bitmap = Bitmap.createBitmap(bitmapWidth, vdHeight, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(buffer)
 
-            if (needSetup) {
-                // Tear down old
-                virtualDisplay?.release()
-                virtualDisplay = null
-                imageReader?.close()
-                imageReader = null
-
-                imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-                virtualDisplay = proj.createVirtualDisplay(
-                    "ClawScreenCapture",
-                    w, h, density,
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                    imageReader!!.surface,
-                    null, handler
-                )
-                captureWidth = w
-                captureHeight = h
-
-                // Wait for first frame to render
-                Thread.sleep(300)
+            if (rowPadding > 0) {
+                Bitmap.createBitmap(bitmap, 0, 0, vdWidth, vdHeight)
+            } else {
+                bitmap
             }
-
-            // Now capture from the persistent ImageReader
-            // Poll for an available image (up to 2 seconds)
-            var image: Image? = null
-            val startTime = System.currentTimeMillis()
-            while (image == null && System.currentTimeMillis() - startTime < 2000) {
-                try {
-                    image = imageReader!!.acquireLatestImage()
-                } catch (e: Exception) {
-                    // Image may not be available yet
-                }
-                if (image == null) {
-                    Thread.sleep(50)
-                }
-            }
-
-            if (image == null) {
-                lastError = "No frame available after 2s (imageReader state: ${imageReader?.width}x${imageReader?.height})"
-                return null
-            }
-
-            try {
-                val planes = image!!.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * w
-
-                val bitmapWidth = w + rowPadding / pixelStride
-                val bitmap = Bitmap.createBitmap(bitmapWidth, h, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(buffer)
-
-                return if (rowPadding > 0) {
-                    Bitmap.createBitmap(bitmap, 0, 0, w, h)
-                } else {
-                    bitmap
-                }
-            } finally {
-                image?.close()
-            }
-        } catch (e: Exception) {
-            lastError = "Capture failed: ${e.message}"
-            return null
+        } finally {
+            img?.close()
         }
     }
 
     fun releaseProjection() {
+        synchronized(frameLock) {
+            latestImage?.close()
+            latestImage = null
+        }
+        // VirtualDisplay.Callback.onStopped() will null out our references
         virtualDisplay?.release()
-        virtualDisplay = null
         imageReader?.close()
-        imageReader = null
-        captureWidth = 0
-        captureHeight = 0
         mediaProjection?.stop()
         mediaProjection = null
+        virtualDisplay = null
+        imageReader = null
     }
 }

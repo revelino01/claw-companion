@@ -319,20 +319,8 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── Screenshot ────────────────────────────────────────────
 
     private fun screenshot(params: Map<String, String>): Response {
-        if (!ScreenCaptureManager.isGranted) {
-            return errorResponse(402, "MediaProjection permission required. GET /screenshot/grant to request permission, then approve the dialog.")
-        }
-
-        val projectionOk = ScreenCaptureManager.ensureProjection(context)
-        if (!projectionOk) {
-            return errorResponse(500, "ensureProjection failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
-        }
-        if (ScreenCaptureManager.mediaProjection == null) {
-            return errorResponse(500, "mediaProjection is null after ensureProjection")
-        }
-
         val bitmap = ScreenCaptureManager.captureScreenshot(context)
-            ?: return errorResponse(500, "captureScreenshot null: " + (ScreenCaptureManager.lastError ?: "no error info"))
+            ?: return errorResponse(500, ScreenCaptureManager.lastError ?: "Capture failed")
 
         val format = when (params["format"]?.lowercase()) {
             "jpeg", "jpg" -> Pair(Bitmap.CompressFormat.JPEG, "image/jpeg")
@@ -350,7 +338,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     }
 
     private fun requestScreenshotGrant(): Response {
-        // Release any stale projection so the new grant creates a fresh one
         ScreenCaptureManager.releaseProjection()
         val intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -358,30 +345,13 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
         context.startActivity(intent)
         return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))
-        // Signal MainActivity to request permission
-        mainHandler.post {
-            val intent = Intent(context, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.putExtra("request_media_projection", true)
-            context.startActivity(intent)
-        }
-        return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))
     }
 
     // ─── OCR ────────────────────────────────────────────────────
 
     private fun ocr(params: Map<String, String>): Response {
-        if (!ScreenCaptureManager.isGranted) {
-            return errorResponse(402, "MediaProjection permission required. GET /screenshot/grant first.")
-        }
-
-        val projectionOk = ScreenCaptureManager.ensureProjection(context)
-        if (!projectionOk) {
-            return errorResponse(500, "ensureProjection failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
-        }
-
         val bitmap = ScreenCaptureManager.captureScreenshot(context)
-            ?: return errorResponse(500, "captureScreenshot null: " + (ScreenCaptureManager.lastError ?: "unknown error"))
+            ?: return errorResponse(500, "Screenshot failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
 
         val inputImage = InputImage.fromBitmap(bitmap, 0)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
