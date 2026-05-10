@@ -17,11 +17,17 @@ import ai.openclaw.companion.model.*
 import ai.openclaw.companion.service.ClawAccessibilityService
 import ai.openclaw.companion.service.ClawForegroundService
 import ai.openclaw.companion.service.ClawNotificationListener
+import ai.openclaw.companion.service.ScreenCaptureManager
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) {
 
@@ -310,10 +316,110 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── Screenshot ────────────────────────────────────────────
 
     private fun screenshot(params: Map<String, String>): Response {
-        // Screenshot requires MediaProjection which needs user permission per session
-        // For now, use the accessibility service's built-in screen capture if available
-        // This is a placeholder - full implementation needs MediaProjection setup
-        return errorResponse(501, "Screenshot requires MediaProjection - use ADB screencap or implement MediaProjection callback")
+        if (!ScreenCaptureManager.isGranted) {
+            return errorResponse(402, "MediaProjection permission required. GET /screenshot/grant to request permission, then approve the dialog.")
+        }
+
+        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+            ?: return errorResponse(500, "Failed to capture screenshot")
+
+        val format = when (params["format"]?.lowercase()) {
+            "jpeg", "jpg" -> Pair(Bitmap.CompressFormat.JPEG, "image/jpeg")
+            else -> Pair(Bitmap.CompressFormat.PNG, "image/png")
+        }
+
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(format.first, 90, stream)
+        bitmap.recycle()
+
+        return newFixedLengthResponse(Response.Status.OK, format.second, stream.toByteArray().inputStream(), stream.size().toLong()).apply {
+            addHeader("Access-Control-Allow-Origin", "*")
+            addHeader("Cache-Control", "no-cache")
+        }
+    }
+
+    private fun requestScreenshotGrant(): Response {
+        if (ScreenCaptureManager.isGranted) {
+            return json(ApiResponse(true, mapOf("message" to "MediaProjection already granted")))
+        }
+        // Signal MainActivity to request permission
+        mainHandler.post {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra("request_media_projection", true)
+            }
+            context.startActivity(intent)
+        }
+        return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))
+    }
+
+    // ─── OCR ────────────────────────────────────────────────────
+
+    private fun ocr(params: Map<String, String>): Response {
+        if (!ScreenCaptureManager.isGranted) {
+            return errorResponse(402, "MediaProjection permission required. GET /screenshot/grant first.")
+        }
+
+        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+            ?: return errorResponse(500, "Failed to capture screenshot for OCR")
+
+        val inputImage = InputImage.fromBitmap(bitmap, 0)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+        // Run OCR synchronously with a latch
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val resultRef = AtomicReference<com.google.mlkit.vision.text.Text?>(null)
+        val errorRef = AtomicReference<Exception?>(null)
+
+        recognizer.process(inputImage)
+            .addOnSuccessListener { visionText ->
+                resultRef.set(visionText)
+                latch.countDown()
+            }
+            .addOnFailureListener { e ->
+                errorRef.set(e)
+                latch.countDown()
+            }
+
+        latch.await(10, TimeUnit.SECONDS)
+        bitmap.recycle()
+
+        val error = errorRef.get()
+        if (error != null) {
+            return errorResponse(500, "OCR failed: ${error.message}")
+        }
+
+        val visionText = resultRef.get()
+            ?: return errorResponse(500, "OCR timed out")
+
+        val textBlocks = visionText.textBlocks.map { block ->
+            mapOf(
+                "text" to block.text,
+                "bounds" to rectToString(block.boundingBox),
+                "lines" to block.lines.map { line ->
+                    mapOf(
+                        "text" to line.text,
+                        "bounds" to rectToString(line.boundingBox),
+                        "elements" to line.elements.map { el ->
+                            mapOf(
+                                "text" to el.text,
+                                "bounds" to rectToString(el.boundingBox)
+                            )
+                        }
+                    )
+                }
+            )
+        }
+
+        return json(ApiResponse(true, mapOf(
+            "fullText" to visionText.text,
+            "blocks" to textBlocks
+        )))
+    }
+
+    private fun rectToString(rect: Rect?): String {
+        if (rect == null) return "0,0,0,0"
+        return "${rect.left},${rect.top},${rect.right},${rect.bottom}"
     }
 
     // ─── Notifications ─────────────────────────────────────────

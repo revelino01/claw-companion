@@ -65,6 +65,9 @@ dependencies {
     // JSON serialization
     implementation("com.google.code.gson:gson:2.12.1")
 
+    // ML Kit Text Recognition (on-device)
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

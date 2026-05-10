@@ -43,7 +43,7 @@ class ClawForegroundService : Service() {
         val notification = buildNotification(ClawApp.DEFAULT_PORT)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)

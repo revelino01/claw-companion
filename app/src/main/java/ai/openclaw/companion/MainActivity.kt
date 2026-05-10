@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,8 +16,13 @@ import androidx.core.app.ActivityCompat
 import ai.openclaw.companion.service.ClawAccessibilityService
 import ai.openclaw.companion.service.ClawForegroundService
 import ai.openclaw.companion.service.ClawNotificationListener
+import ai.openclaw.companion.service.ScreenCaptureManager
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val REQUEST_MEDIA_PROJECTION = 1001
+    }
 
     private lateinit var statusText: TextView
     private lateinit var addressText: TextView
@@ -24,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var accessibilityStatus: TextView
     private lateinit var notificationStatus: TextView
     private lateinit var overlayStatus: TextView
+    private lateinit var screenshotStatus: TextView
 
     private var isServiceRunning = false
 
@@ -37,6 +44,7 @@ class MainActivity : AppCompatActivity() {
         accessibilityStatus = findViewById(R.id.accessibilityStatus)
         notificationStatus = findViewById(R.id.notificationStatus)
         overlayStatus = findViewById(R.id.overlayStatus)
+        screenshotStatus = findViewById(R.id.screenshotStatus)
 
         // Permission buttons
         findViewById<Button>(R.id.enableAccessibilityBtn).setOnClickListener {
@@ -51,6 +59,11 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
+        }
+
+        // Screenshot permission button
+        findViewById<Button>(R.id.enableScreenshotBtn)?.setOnClickListener {
+            requestMediaProjection()
         }
 
         // Request runtime permissions
@@ -70,6 +83,35 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updatePermissionStatuses()
         updateServiceStatus()
+
+        // Check if launched from /screenshot/grant
+        if (intent?.getBooleanExtra("request_media_projection", false) == true) {
+            requestMediaProjection()
+            intent.removeExtra("request_media_projection")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("request_media_projection", false)) {
+            requestMediaProjection()
+        }
+    }
+
+    private fun requestMediaProjection() {
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_MEDIA_PROJECTION) {
+            if (resultCode == RESULT_OK && data != null) {
+                ScreenCaptureManager.setPermissionResult(resultCode, data)
+            }
+            updatePermissionStatuses()
+        }
     }
 
     private fun requestRuntimePermissions() {
@@ -86,12 +128,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updatePermissionStatuses() {
-        // Use instance check — more reliable than Settings.Secure on all Android versions
         val hasAccessibility = ClawAccessibilityService.instance != null
         val hasNotification = ClawNotificationListener.instance != null
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else true
+        val hasScreenshot = ScreenCaptureManager.isGranted
 
         accessibilityStatus.text = "♿ Accessibility Service ${if (hasAccessibility) "✅" else "❌"}"
         accessibilityStatus.setTextColor(getColor(if (hasAccessibility) R.color.accent_green else R.color.accent_red))
@@ -101,10 +143,12 @@ class MainActivity : AppCompatActivity() {
 
         overlayStatus.text = "🖥️ Draw Over Apps ${if (hasOverlay) "✅" else "❌"}"
         overlayStatus.setTextColor(getColor(if (hasOverlay) R.color.accent_green else R.color.accent_red))
+
+        screenshotStatus.text = "📸 Screenshot Permission ${if (hasScreenshot) "✅" else "❌"}"
+        screenshotStatus.setTextColor(getColor(if (hasScreenshot) R.color.accent_green else R.color.accent_red))
     }
 
     private fun updateServiceStatus() {
-        // Check if the foreground service is actually running via ActivityManager
         isServiceRunning = isServiceRunning(this)
         if (isServiceRunning) {
             statusText.text = "✅ Running"
@@ -133,7 +177,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        // Don't immediately set to true — onResume will re-check
     }
 
     private fun stopClawService() {
