@@ -48,7 +48,7 @@ object ScreenCaptureManager {
         resultData = data
         isGranted = true
         // Immediately create the projection — the token can only be used once
-        createProjectionIfNeeded = true
+        createProjectionNeeded = true
     }
 
     @Volatile
