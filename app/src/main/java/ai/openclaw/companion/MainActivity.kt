@@ -1,7 +1,7 @@
 package ai.openclaw.companion
 
 import android.Manifest
-import android.content.ComponentName
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -86,8 +86,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updatePermissionStatuses() {
-        val hasAccessibility = ClawAccessibilityService.isEnabled(this)
-        val hasNotification = ClawNotificationListener.isEnabled(this)
+        // Use instance check — more reliable than Settings.Secure on all Android versions
+        val hasAccessibility = ClawAccessibilityService.instance != null
+        val hasNotification = ClawNotificationListener.instance != null
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else true
@@ -103,7 +104,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateServiceStatus() {
-        isServiceRunning = ClawForegroundService.isRunning()
+        // Check if the foreground service is actually running via ActivityManager
+        isServiceRunning = isServiceRunning(this)
         if (isServiceRunning) {
             statusText.text = "✅ Running"
             statusText.setTextColor(getColor(R.color.accent_green))
@@ -117,6 +119,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isServiceRunning(context: Context): Boolean {
+        val am = context.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        @Suppress("DEPRECATION")
+        val services = am.getRunningServices(Int.MAX_VALUE)
+        return services.any { it.service.className == ClawForegroundService::class.java.name }
+    }
+
     private fun startClawService() {
         val intent = Intent(this, ClawForegroundService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -124,15 +133,12 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        isServiceRunning = true
-        updateServiceStatus()
+        // Don't immediately set to true — onResume will re-check
     }
 
     private fun stopClawService() {
         val intent = Intent(this, ClawForegroundService::class.java)
         intent.action = ClawForegroundService.ACTION_STOP
         startService(intent)
-        isServiceRunning = false
-        updateServiceStatus()
     }
 }
