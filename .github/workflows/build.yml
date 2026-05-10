@@ -34,15 +34,11 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
 
-      - name: Download Gradle Wrapper JAR
-        run: |
-          mkdir -p gradle/wrapper
-          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.11.1/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar 2>/dev/null || {
-            # Alternative: generate wrapper using installed gradle
-            gradle wrapper --gradle-version 8.11.1
-          }
-          chmod +x gradlew
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.11.1
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
