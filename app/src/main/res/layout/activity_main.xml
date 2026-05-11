@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="@color/surface_dark">
+    android:background="@color/surface_dark"
+    android:overScrollMode="never">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,7 +14,7 @@
         android:padding="20dp"
         android:clipToPadding="false">
 
-        <!-- Hero: App Identity -->
+        <!-- Hero: App Identity with larger icon and subtitle -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -21,12 +22,11 @@
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
 
-            <!-- Claw icon -->
             <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:src="@drawable/ic_launcher_foreground"
-                android:layout_marginEnd="12dp"
+                android:layout_marginEnd="14dp"
                 android:importantForAccessibility="no" />
 
             <LinearLayout
@@ -39,7 +39,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Claw Companion"
-                    android:textSize="22sp"
+                    android:textSize="24sp"
                     android:textColor="@color/text_primary"
                     android:fontFamily="sans-serif-medium" />
 
@@ -52,7 +52,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Status Banner -->
+        <!-- Status Banner: now has a top accent bar and more visual weight -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/statusCard"
             android:layout_width="match_parent"
@@ -68,73 +68,113 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
+                android:orientation="vertical">
 
-                <!-- Status indicator row -->
+                <!-- Top accent bar that changes color with status (red = stopped, green = running) -->
+                <View
+                    android:id="@+id/statusAccentBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:background="@color/status_stopped" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:orientation="vertical"
+                    android:padding="20dp">
 
-                    <View
-                        android:id="@+id/statusDot"
-                        android:layout_width="10dp"
-                        android:layout_height="10dp"
-                        android:background="@drawable/status_dot_stopped" />
+                    <!-- Status row with pulsing dot -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <View
+                            android:id="@+id/statusDot"
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:background="@drawable/status_dot_stopped" />
+
+                        <TextView
+                            android:id="@+id/statusText"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Stopped"
+                            android:textSize="18sp"
+                            android:textColor="@color/status_stopped"
+                            android:fontFamily="sans-serif-medium"
+                            android:layout_marginStart="10dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/toggleServiceBtn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:text="Start"
+                            android:textSize="13sp"
+                            app:backgroundTint="@color/claw_red"
+                            app:cornerRadius="20dp"
+                            app:icon="@android:drawable/ic_media_play"
+                            app:iconTint="@color/white"
+                            app:iconSize="16dp" />
+                    </LinearLayout>
 
                     <TextView
-                        android:id="@+id/statusText"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Stopped"
-                        android:textSize="18sp"
-                        android:textColor="@color/status_stopped"
-                        android:fontFamily="sans-serif-medium"
-                        android:layout_marginStart="10dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/toggleServiceBtn"
+                        android:id="@+id/addressText"
                         android:layout_width="wrap_content"
-                        android:layout_height="40dp"
-                        android:text="Start"
+                        android:layout_height="wrap_content"
+                        android:text=""
                         android:textSize="13sp"
-                        app:backgroundTint="@color/claw_red"
-                        app:cornerRadius="20dp"
-                        app:icon="@android:drawable/ic_media_play"
-                        app:iconTint="@color/white"
-                        app:iconSize="16dp" />
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="monospace"
+                        android:layout_marginTop="6dp"
+                        android:textIsSelectable="true" />
                 </LinearLayout>
-
-                <TextView
-                    android:id="@+id/addressText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:textSize="13sp"
-                    android:textColor="@color/text_secondary"
-                    android:fontFamily="monospace"
-                    android:layout_marginTop="6dp"
-                    android:textIsSelectable="true" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Permissions Section -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Section divider with chip label -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="PERMISSIONS"
-            android:textSize="11sp"
-            android:textColor="@color/text_secondary"
-            android:letterSpacing="0.08"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:layout_marginStart="4dp" />
+            android:layout_marginBottom="12dp">
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/surface_outline" />
+
+            <com.google.android.material.chip.Chip
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="PERMISSIONS"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary"
+                app:chipBackgroundColor="@color/surface_card"
+                app:chipStrokeColor="@color/surface_outline"
+                app:chipStrokeWidth="1dp"
+                app:chipCornerRadius="18dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                app:chipMinTouchTargetSize="0dp"
+                android:clickable="false"
+                android:focusable="false" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/surface_outline" />
+        </LinearLayout>
 
         <!-- Accessibility -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardAccessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -151,22 +191,56 @@
                 android:gravity="center_vertical"
                 android:padding="16dp">
 
-                <TextView
+                <!-- Icon in a subtle circle background -->
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_perm_accessibility"
+                    android:scaleType="centerInside"
+                    android:background="@color/surface_card_elevated"
+                    android:padding="6dp"
+                    android:layout_marginEnd="14dp"
+                    app:shapeAppearanceOverlay="@style/CircleShape"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Accessibility Service"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/accessibilityBadge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="✗"
-                    android:textSize="16sp"
-                    android:textColor="@color/status_stopped"
-                    android:layout_marginEnd="12dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Accessibility Service"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Read screen and perform gestures"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- Badge in a circular background -->
+                <FrameLayout
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/badge_bg">
+
+                    <TextView
+                        android:id="@+id/accessibilityBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="✗"
+                        android:textSize="14sp"
+                        android:textColor="@color/status_stopped" />
+                </FrameLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/enableAccessibilityBtn"
@@ -182,6 +256,7 @@
 
         <!-- Notification -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardNotification"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -198,22 +273,54 @@
                 android:gravity="center_vertical"
                 android:padding="16dp">
 
-                <TextView
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_perm_notification"
+                    android:scaleType="centerInside"
+                    android:background="@color/surface_card_elevated"
+                    android:padding="6dp"
+                    android:layout_marginEnd="14dp"
+                    app:shapeAppearanceOverlay="@style/CircleShape"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Notification Access"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/notificationBadge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="✗"
-                    android:textSize="16sp"
-                    android:textColor="@color/status_stopped"
-                    android:layout_marginEnd="12dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Notification Access"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Read and interact with notifications"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/badge_bg">
+
+                    <TextView
+                        android:id="@+id/notificationBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="✗"
+                        android:textSize="14sp"
+                        android:textColor="@color/status_stopped" />
+                </FrameLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/enableNotificationBtn"
@@ -229,6 +336,7 @@
 
         <!-- Overlay -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardOverlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -245,22 +353,54 @@
                 android:gravity="center_vertical"
                 android:padding="16dp">
 
-                <TextView
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_perm_overlay"
+                    android:scaleType="centerInside"
+                    android:background="@color/surface_card_elevated"
+                    android:padding="6dp"
+                    android:layout_marginEnd="14dp"
+                    app:shapeAppearanceOverlay="@style/CircleShape"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Draw Over Apps"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/overlayBadge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="✗"
-                    android:textSize="16sp"
-                    android:textColor="@color/status_stopped"
-                    android:layout_marginEnd="12dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Draw Over Apps"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Display floating windows"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/badge_bg">
+
+                    <TextView
+                        android:id="@+id/overlayBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="✗"
+                        android:textSize="14sp"
+                        android:textColor="@color/status_stopped" />
+                </FrameLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/enableOverlayBtn"
@@ -276,9 +416,10 @@
 
         <!-- Screenshot -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardScreenshot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             app:cardBackgroundColor="@color/surface_card"
             app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
@@ -292,22 +433,54 @@
                 android:gravity="center_vertical"
                 android:padding="16dp">
 
-                <TextView
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_perm_screenshot"
+                    android:scaleType="centerInside"
+                    android:background="@color/surface_card_elevated"
+                    android:padding="6dp"
+                    android:layout_marginEnd="14dp"
+                    app:shapeAppearanceOverlay="@style/CircleShape"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Screenshot Permission"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/screenshotBadge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="✗"
-                    android:textSize="16sp"
-                    android:textColor="@color/status_stopped"
-                    android:layout_marginEnd="12dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Screenshot Permission"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Capture and read screen content"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/badge_bg">
+
+                    <TextView
+                        android:id="@+id/screenshotBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="✗"
+                        android:textSize="14sp"
+                        android:textColor="@color/status_stopped" />
+                </FrameLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/enableScreenshotBtn"
@@ -320,6 +493,16 @@
                     app:strokeColor="@color/surface_outline" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- Footer info -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Claw Companion v0.0.14  •  OpenClaw"
+            android:textSize="11sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="8dp" />
 
     </LinearLayout>
 </ScrollView>

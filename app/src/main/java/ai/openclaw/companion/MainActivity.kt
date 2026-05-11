@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var addressText: TextView
     private lateinit var toggleServiceBtn: com.google.android.material.button.MaterialButton
     private lateinit var statusDot: View
+    private lateinit var statusAccentBar: View
     private lateinit var accessibilityBadge: TextView
     private lateinit var notificationBadge: TextView
     private lateinit var overlayBadge: TextView
@@ -44,6 +46,7 @@ class MainActivity : AppCompatActivity() {
         addressText = findViewById(R.id.addressText)
         toggleServiceBtn = findViewById(R.id.toggleServiceBtn)
         statusDot = findViewById(R.id.statusDot)
+        statusAccentBar = findViewById(R.id.statusAccentBar)
         accessibilityBadge = findViewById(R.id.accessibilityBadge)
         notificationBadge = findViewById(R.id.notificationBadge)
         overlayBadge = findViewById(R.id.overlayBadge)
@@ -155,6 +158,7 @@ class MainActivity : AppCompatActivity() {
             statusText.text = "Running"
             statusText.setTextColor(getColor(R.color.status_running))
             statusDot.setBackgroundResource(R.drawable.status_dot_running)
+            statusAccentBar.setBackgroundColor(getColor(R.color.status_running))
             addressText.text = "http://localhost:${ClawApp.DEFAULT_PORT}"
             toggleServiceBtn.text = "Stop"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_pause)
@@ -162,6 +166,7 @@ class MainActivity : AppCompatActivity() {
             statusText.text = "Stopped"
             statusText.setTextColor(getColor(R.color.status_stopped))
             statusDot.setBackgroundResource(R.drawable.status_dot_stopped)
+            statusAccentBar.setBackgroundColor(getColor(R.color.status_stopped))
             addressText.text = ""
             toggleServiceBtn.text = "Start"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_play)
