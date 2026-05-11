@@ -1,15 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="22" android:translateY="22">
-        <path
-            android:fillColor="#FF6200EE"
-            android:pathData="M32,0C14.33,0,0,14.33,0,32s14.33,32,32,32s32,-14.33,32,-32S49.67,0,32,0z
-                M32,52c-11.05,0,-20,-8.95,-20,-20S20.95,12,32,12s20,8.95,20,20S43.05,52,32,52z"/>
-        <path
-            android:fillColor="#FF03DAC5"
-            android:pathData="M42,22L22,22L22,42L42,42L42,22z"/>
-    </group>
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#FFDC2626"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+
+    <!-- Claw mark - three diagonal slashes -->
+    <!-- Left claw -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M36,70 L40,28 L44,28 L42,70 Z"/>
+    <!-- Center claw (tallest) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,74 L54,22 L58,22 L56,74 Z"/>
+    <!-- Right claw -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M64,70 L68,28 L72,28 L70,70 Z"/>
+
+    <!-- Claw tips - curved tops -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,28 Q42,20 46,28 L44,32 L40,32 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52,22 Q56,14 60,22 L58,26 L54,26 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M66,28 Q70,20 74,28 L72,32 L68,32 Z"/>
 </vector>

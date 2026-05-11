@@ -1,5 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Primary: Deep crimson-red (claw shell) -->
+    <color name="claw_red">#FFDC2626</color>
+    <color name="claw_red_dark">#FFB91C1C</color>
+    <color name="claw_red_light">#FFFCA5A5</color>
+
+    <!-- Accent: Warm amber (claw interior) -->
+    <color name="claw_amber">#FFF59E0B</color>
+    <color name="claw_amber_dark">#FFD97706</color>
+
+    <!-- Surfaces -->
+    <color name="surface_dark">#FF0F0F1A</color>
+    <color name="surface_card">#FF1A1A2E</color>
+    <color name="surface_card_elevated">#FF232340</color>
+    <color name="surface_outline">#FF2D2D4A</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFF1F1F5</color>
+    <color name="text_secondary">#FF9CA3AF</color>
+    <color name="text_on_primary">#FFFFFFFF</color>
+
+    <!-- Status -->
+    <color name="status_running">#FF34D399</color>
+    <color name="status_stopped">#FFF87171</color>
+    <color name="status_warning">#FFFBBF24</color>
+
+    <!-- Legacy compat -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,9 +33,9 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="dark_bg">#FF1A1A2E</color>
-    <color name="card_bg">#FF16213E</color>
-    <color name="accent_green">#FF00E676</color>
-    <color name="accent_red">#FFFF5252</color>
-    <color name="accent_yellow">#FFFFD740</color>
+    <color name="dark_bg">#FF0F0F1A</color>
+    <color name="card_bg">#FF1A1A2E</color>
+    <color name="accent_green">#FF34D399</color>
+    <color name="accent_red">#FFF87171</color>
+    <color name="accent_yellow">#FFFBBF24</color>
 </resources>

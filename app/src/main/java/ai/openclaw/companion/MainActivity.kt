@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import ai.openclaw.companion.service.ClawAccessibilityService
@@ -26,11 +27,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var addressText: TextView
-    private lateinit var toggleServiceBtn: Button
-    private lateinit var accessibilityStatus: TextView
-    private lateinit var notificationStatus: TextView
-    private lateinit var overlayStatus: TextView
-    private lateinit var screenshotStatus: TextView
+    private lateinit var toggleServiceBtn: com.google.android.material.button.MaterialButton
+    private lateinit var statusDot: View
+    private lateinit var accessibilityBadge: TextView
+    private lateinit var notificationBadge: TextView
+    private lateinit var overlayBadge: TextView
+    private lateinit var screenshotBadge: TextView
 
     private var isServiceRunning = false
 
@@ -41,10 +43,11 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         addressText = findViewById(R.id.addressText)
         toggleServiceBtn = findViewById(R.id.toggleServiceBtn)
-        accessibilityStatus = findViewById(R.id.accessibilityStatus)
-        notificationStatus = findViewById(R.id.notificationStatus)
-        overlayStatus = findViewById(R.id.overlayStatus)
-        screenshotStatus = findViewById(R.id.screenshotStatus)
+        statusDot = findViewById(R.id.statusDot)
+        accessibilityBadge = findViewById(R.id.accessibilityBadge)
+        notificationBadge = findViewById(R.id.notificationBadge)
+        overlayBadge = findViewById(R.id.overlayBadge)
+        screenshotBadge = findViewById(R.id.screenshotBadge)
 
         // Permission buttons
         findViewById<Button>(R.id.enableAccessibilityBtn).setOnClickListener {
@@ -135,31 +138,33 @@ class MainActivity : AppCompatActivity() {
         } else true
         val hasScreenshot = ScreenCaptureManager.isGranted
 
-        accessibilityStatus.text = "♿ Accessibility Service ${if (hasAccessibility) "✅" else "❌"}"
-        accessibilityStatus.setTextColor(getColor(if (hasAccessibility) R.color.accent_green else R.color.accent_red))
+        updateBadge(accessibilityBadge, hasAccessibility)
+        updateBadge(notificationBadge, hasNotification)
+        updateBadge(overlayBadge, hasOverlay)
+        updateBadge(screenshotBadge, hasScreenshot)
+    }
 
-        notificationStatus.text = "🔔 Notification Access ${if (hasNotification) "✅" else "❌"}"
-        notificationStatus.setTextColor(getColor(if (hasNotification) R.color.accent_green else R.color.accent_red))
-
-        overlayStatus.text = "🖥️ Draw Over Apps ${if (hasOverlay) "✅" else "❌"}"
-        overlayStatus.setTextColor(getColor(if (hasOverlay) R.color.accent_green else R.color.accent_red))
-
-        screenshotStatus.text = "📸 Screenshot Permission ${if (hasScreenshot) "✅" else "❌"}"
-        screenshotStatus.setTextColor(getColor(if (hasScreenshot) R.color.accent_green else R.color.accent_red))
+    private fun updateBadge(badge: TextView, granted: Boolean) {
+        badge.text = if (granted) "✓" else "✗"
+        badge.setTextColor(getColor(if (granted) R.color.status_running else R.color.status_stopped))
     }
 
     private fun updateServiceStatus() {
         isServiceRunning = isServiceRunning(this)
         if (isServiceRunning) {
-            statusText.text = "✅ Running"
-            statusText.setTextColor(getColor(R.color.accent_green))
+            statusText.text = "Running"
+            statusText.setTextColor(getColor(R.color.status_running))
+            statusDot.setBackgroundResource(R.drawable.status_dot_running)
             addressText.text = "http://localhost:${ClawApp.DEFAULT_PORT}"
-            toggleServiceBtn.text = "Stop Service"
+            toggleServiceBtn.text = "Stop"
+            toggleServiceBtn.setIconResource(android.R.drawable.ic_media_pause)
         } else {
-            statusText.text = "⛔ Stopped"
-            statusText.setTextColor(getColor(R.color.accent_red))
+            statusText.text = "Stopped"
+            statusText.setTextColor(getColor(R.color.status_stopped))
+            statusDot.setBackgroundResource(R.drawable.status_dot_stopped)
             addressText.text = ""
-            toggleServiceBtn.text = "Start Service"
+            toggleServiceBtn.text = "Start"
+            toggleServiceBtn.setIconResource(android.R.drawable.ic_media_play)
         }
     }
 
