@@ -27,6 +27,8 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
 | `/device` | GET | Device info (screen size, model, SDK) |
 | `/packages` | GET | List installed packages |
 | `/screenshot` | GET | Screenshot (requires MediaProjection) |
+| `/screenshot/grant` | GET | Request MediaProjection permission (opens system dialog) |
+| `/ocr` | GET | OCR text recognition from current screen (uses ML Kit) |
 
 ## Setup
 
@@ -54,6 +56,12 @@ curl -s -X POST http://localhost:18790/press -H 'Content-Type: application/json'
 
 # Read notifications
 curl -s http://localhost:18790/notifications | jq
+
+# Get a screenshot (PNG)
+curl -s http://localhost:18790/screenshot --output screenshot.png
+
+# OCR: read text from current screen
+curl -s http://localhost:18790/ocr | jq
 
 # Launch an app
 curl -s -X POST http://localhost:18790/intent -H 'Content-Type: application/json' -d '{"package":"com.google.android.googlequicksearchbox"}'
