@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "ai.openclaw.companion"
-        minSdk = 26
+        minSdk = 31
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
@@ -67,6 +67,9 @@ dependencies {
 
     // ML Kit Text Recognition (on-device)
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // ML Kit GenAI Speech Recognition (on-device, Gemini Nano)
+    implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha1")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")

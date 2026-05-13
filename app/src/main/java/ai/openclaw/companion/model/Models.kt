@@ -52,3 +52,11 @@ data class ApiResponse(
     val data: Any? = null,
     val error: String? = null
 )
+
+/**
+ * STT request models
+ */
+data class SttTranscribeRequest(
+    val locale: String? = null,
+    val mode: String? = null  // "advanced" or "basic"
+)

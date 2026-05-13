@@ -19,6 +19,8 @@ import ai.openclaw.companion.service.ClawAccessibilityService
 import ai.openclaw.companion.service.ClawForegroundService
 import ai.openclaw.companion.service.ClawNotificationListener
 import ai.openclaw.companion.service.ScreenCaptureManager
+import ai.openclaw.companion.service.SpeechRecognizerManager
+import kotlinx.coroutines.runBlocking
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -113,6 +115,11 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
 
                 // ─── Packages ──────────────────────────────
                 uri == "/packages" && method == Method.GET -> getPackages(params)
+
+                // ─── Speech-to-Text ──────────────────────────
+                uri == "/stt/status" && method == Method.GET -> getSttStatus()
+                uri == "/stt/download" && method == Method.POST -> downloadSttModel()
+                uri == "/stt/transcribe" && method == Method.POST -> transcribeAudio(session)
 
                 // ─── Service Control ────────────────────────
                 uri == "/stop" && method == Method.POST -> stopService()
@@ -638,6 +645,83 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
         context.startService(intent)
         return json(ApiResponse(true, "Stopping service"))
+    }
+
+    // ─── Speech-to-Text ────────────────────────────────────────
+
+    private fun getSttStatus(): Response {
+        val manager = SpeechRecognizerManager.instance
+            ?: return json(ApiResponse(true, mapOf(
+                "ready" to false,
+                "mode" to "none",
+                "modelStatus" to "not_initialized"
+            )))
+
+        val statusInfo = manager.getStatusInfo()
+        return json(ApiResponse(true, statusInfo))
+    }
+
+    private fun downloadSttModel(): Response {
+        val manager = SpeechRecognizerManager.instance
+            ?: return errorResponse(503, "Speech recognizer not initialized")
+
+        val result = runBlocking { manager.downloadModel() }
+        return json(ApiResponse(
+            result is SpeechRecognizerManager.ModelStatus.Available,
+            mapOf(
+                "status" to when (result) {
+                    is SpeechRecognizerManager.ModelStatus.Available -> "available"
+                    is SpeechRecognizerManager.ModelStatus.Downloading -> "downloading(${result.progress}%)"
+                    is SpeechRecognizerManager.ModelStatus.DownloadFailed -> "failed: ${result.error}"
+                    else -> result.toString()
+                }
+            )
+        ))
+    }
+
+    private fun transcribeAudio(session: IHTTPSession): Response {
+        val manager = SpeechRecognizerManager.instance
+            ?: return errorResponse(503, "Speech recognizer not initialized")
+
+        if (manager.modelStatus.value !is SpeechRecognizerManager.ModelStatus.Available) {
+            return errorResponse(503, "Speech recognizer model not ready. Call /stt/download first or check /stt/status")
+        }
+
+        try {
+            // Parse multipart form data to get the audio file
+            val files = mutableMapOf<String, String>()
+            val params = mutableMapOf<String, String>()
+            session.parseBody(files)
+
+            // Find the audio file in the upload
+            val audioFile = files["audio"] ?: files["file"] ?: files.values.firstOrNull()
+                ?: return errorResponse(400, "No audio file provided. Upload as 'audio' or 'file' field")
+
+            // Read the file bytes
+            val file = java.io.File(audioFile)
+            if (!file.exists()) {
+                return errorResponse(400, "Uploaded file not found")
+            }
+
+            val audioBytes = file.readBytes()
+            val mimeType = session.headers?.get("content-type") ?: "audio/wav"
+
+            val result = runBlocking {
+                manager.transcribeFile(audioBytes, mimeType)
+            }
+
+            // Clean up temp file from NanoHTTPD
+            file.delete()
+
+            return json(ApiResponse(true, mapOf(
+                "text" to result.text,
+                "isFinal" to result.isFinal,
+                "confidence" to result.confidence,
+                "mode" to result.mode
+            )))
+        } catch (e: Exception) {
+            return errorResponse(500, "Transcription failed: ${e.message}")
+        }
     }
 
     // ─── Helpers ───────────────────────────────────────────────

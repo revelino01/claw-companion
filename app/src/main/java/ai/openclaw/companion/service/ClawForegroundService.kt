@@ -27,6 +27,7 @@ class ClawForegroundService : Service() {
 
     private var server: ClawHttpServer? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var speechRecognizerManager: SpeechRecognizerManager? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +62,12 @@ class ClawForegroundService : Service() {
         // Start HTTP server
         startServer()
 
+        // Initialize speech recognizer
+        val sttManager = SpeechRecognizerManager(this)
+        SpeechRecognizerManager.instance = sttManager
+        speechRecognizerManager = sttManager
+        sttManager.initialize()
+
         return START_STICKY
     }
 
@@ -82,6 +89,8 @@ class ClawForegroundService : Service() {
     override fun onDestroy() {
         server?.stop()
         server = null
+        speechRecognizerManager?.shutdown()
+        SpeechRecognizerManager.instance = null
         wakeLock?.release()
         wakeLock = null
         running = false
