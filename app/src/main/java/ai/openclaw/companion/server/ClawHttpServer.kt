@@ -715,8 +715,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
 
             return json(ApiResponse(true, mapOf(
                 "text" to result.text,
-                "isFinal" to result.isFinal,
-                "confidence" to result.confidence,
                 "mode" to result.mode
             )))
         } catch (e: Exception) {

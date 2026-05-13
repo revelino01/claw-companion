@@ -1,29 +1,41 @@
 package ai.openclaw.companion.service
 
 import android.content.Context
-import android.media.MediaMetadataRetriever
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.util.Log
-import com.google.mlkit.genai.speechrecognition.DownloadStatus
-import com.google.mlkit.genai.speechrecognition.FeatureStatus
+import com.google.mlkit.genai.common.DownloadStatus
+import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.common.audio.AudioSource
+import com.google.mlkit.genai.speechrecognition.SpeechRecognition
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizer
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
-import com.google.mlkit.genai.speechrecognition.SpeechRecognizerResult
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizerRequest
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizerResponse
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages ML Kit GenAI Speech Recognition lifecycle.
  *
  * Supports two modes:
- * - MODE_ADVANCED: Uses on-device Gemini Nano model (iQOO 13 supported)
+ * - MODE_ADVANCED: Uses on-device Gemini Nano model (Pixel 10+ only)
  * - MODE_BASIC: Uses traditional on-device speech recognition (API 31+)
+ *
+ * Important: Advanced mode is currently only available on Pixel 10 devices.
+ * On other devices (like iQOO 13), Basic mode is used.
+ *
+ * File transcription requires raw 16-bit PCM mono 16kHz audio.
+ * For audio files in other formats (OGG/Opus, MP3, etc.), the audio must be
+ * converted to PCM before being sent to the recognizer. This is handled via
+ * Android's MediaCodec/MediaExtractor.
  *
  * Usage from HTTP API:
  * 1. POST /stt/transcribe — transcribe an audio file (blocking, returns final text)
@@ -36,15 +48,18 @@ class SpeechRecognizerManager(private val context: Context) {
         private const val TAG = "SpeechRecognizerMgr"
 
         @Volatile
+        @JvmStatic
         var instance: SpeechRecognizerManager? = null
-            private set
+            internal set
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Current recognizer instance (Advanced mode preferred)
-    private val recognizerRef = AtomicReference<SpeechRecognizer?>(null)
-    private val currentMode = AtomicReference("unknown")
+    // Current recognizer instance
+    @Volatile
+    private var recognizer: SpeechRecognizer? = null
+    @Volatile
+    private var currentMode: String = "unknown"
 
     // Model state
     private val _modelStatus = MutableStateFlow<ModelStatus>(ModelStatus.Unknown)
@@ -62,8 +77,6 @@ class SpeechRecognizerManager(private val context: Context) {
 
     data class TranscriptionResult(
         val text: String,
-        val isFinal: Boolean,
-        val confidence: Float? = null,
         val mode: String
     )
 
@@ -72,6 +85,7 @@ class SpeechRecognizerManager(private val context: Context) {
      * Must be called after service is created.
      */
     fun initialize() {
+        _modelStatus.value = ModelStatus.Checking
         scope.launch {
             tryInitialize()
         }
@@ -83,20 +97,20 @@ class SpeechRecognizerManager(private val context: Context) {
             return
         }
 
-        // Try Advanced mode first (Gemini Nano)
+        // Try Advanced mode first (Gemini Nano) — only works on Pixel 10+
         try {
-            val advancedOpts = SpeechRecognizerOptions.Builder()
-                .setLocale(Locale.getDefault())
-                .setPreferredMode(SpeechRecognizerOptions.Mode.MODE_ADVANCED)
-                .build()
+            val advancedOpts = SpeechRecognizerOptions.builder().apply {
+                locale = Locale.getDefault()
+                preferredMode = SpeechRecognizerOptions.Mode.MODE_ADVANCED
+            }.build()
 
             val advancedRecognizer = SpeechRecognition.getClient(advancedOpts)
             val status = advancedRecognizer.checkStatus()
 
             when (status) {
                 FeatureStatus.AVAILABLE -> {
-                    recognizerRef.set(advancedRecognizer)
-                    currentMode.set("advanced")
+                    recognizer = advancedRecognizer
+                    currentMode = "advanced"
                     _modelStatus.value = ModelStatus.Available
                     Log.i(TAG, "Speech recognizer initialized: ADVANCED mode (Gemini Nano)")
                     return
@@ -116,24 +130,24 @@ class SpeechRecognizerManager(private val context: Context) {
 
         // Fall back to Basic mode
         try {
-            val basicOpts = SpeechRecognizerOptions.Builder()
-                .setLocale(Locale.getDefault())
-                .setPreferredMode(SpeechRecognizerOptions.Mode.MODE_BASIC)
-                .build()
+            val basicOpts = SpeechRecognizerOptions.builder().apply {
+                locale = Locale.getDefault()
+                preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
+            }.build()
 
             val basicRecognizer = SpeechRecognition.getClient(basicOpts)
             val status = basicRecognizer.checkStatus()
 
             when (status) {
                 FeatureStatus.AVAILABLE -> {
-                    recognizerRef.set(basicRecognizer)
-                    currentMode.set("basic")
+                    recognizer = basicRecognizer
+                    currentMode = "basic"
                     _modelStatus.value = ModelStatus.Available
                     Log.i(TAG, "Speech recognizer initialized: BASIC mode")
                 }
                 FeatureStatus.DOWNLOADABLE -> {
-                    recognizerRef.set(basicRecognizer)
-                    currentMode.set("basic")
+                    recognizer = basicRecognizer
+                    currentMode = "basic"
                     _modelStatus.value = ModelStatus.Downloadable
                     Log.i(TAG, "Basic model needs download")
                 }
@@ -152,15 +166,19 @@ class SpeechRecognizerManager(private val context: Context) {
      * Trigger model download for the current recognizer.
      */
     suspend fun downloadModel(): ModelStatus {
-        val recognizer = recognizerRef.get()
+        val currentRecognizer = recognizer
             ?: return ModelStatus.NotSupported("No recognizer initialized")
 
         return try {
             _modelStatus.value = ModelStatus.Downloading(0)
-            recognizer.download().collect { downloadStatus ->
+            @OptIn(kotlin.concurrent.ExperimentalAtomicApi::class)
+            currentRecognizer.download().collect { downloadStatus ->
                 when (downloadStatus) {
                     is DownloadStatus.DownloadProgress -> {
-                        _modelStatus.value = ModelStatus.Downloading(downloadStatus.progress)
+                        _modelStatus.value = ModelStatus.Downloading((downloadStatus.totalBytesDownloaded / 1024).toInt())
+                    }
+                    is DownloadStatus.DownloadStarted -> {
+                        _modelStatus.value = ModelStatus.Downloading(0)
                     }
                     is DownloadStatus.DownloadCompleted -> {
                         _modelStatus.value = ModelStatus.Available
@@ -168,9 +186,9 @@ class SpeechRecognizerManager(private val context: Context) {
                     }
                     is DownloadStatus.DownloadFailed -> {
                         _modelStatus.value = ModelStatus.DownloadFailed(
-                            downloadStatus.error?.message ?: "Download failed"
+                            downloadStatus.e.message ?: "Download failed"
                         )
-                        Log.e(TAG, "Model download failed: ${downloadStatus.error?.message}")
+                        Log.e(TAG, "Model download failed: ${downloadStatus.e.message}")
                     }
                 }
             }
@@ -186,8 +204,7 @@ class SpeechRecognizerManager(private val context: Context) {
      * Get the current status info for the /stt/status endpoint.
      */
     fun getStatusInfo(): Map<String, Any?> {
-        val recognizer = recognizerRef.get()
-        val mode = currentMode.get()
+        val mode = currentMode
         val status = _modelStatus.value
 
         return mapOf(
@@ -207,20 +224,26 @@ class SpeechRecognizerManager(private val context: Context) {
 
     /**
      * Transcribe an audio file. Saves the uploaded bytes to a temp file,
-     * then runs speech recognition on it.
+     * converts to PCM if needed, then runs speech recognition.
+     *
+     * IMPORTANT: ML Kit GenAI Speech Recognition requires raw 16-bit PCM mono 16kHz audio
+     * when using AudioSource.fromPfd(). If the input is in another format (OGG/Opus, MP3, etc.),
+     * it will be converted to PCM using Android's MediaCodec before being sent to the recognizer.
      *
      * Returns the final transcription text.
      */
     suspend fun transcribeFile(audioBytes: ByteArray, mimeType: String?): TranscriptionResult {
-        val recognizer = recognizerRef.get()
-            ?: return TranscriptionResult("", true, mode = "none")
+        val currentRecognizer = recognizer
+            ?: return TranscriptionResult("", "none")
 
         if (_modelStatus.value !is ModelStatus.Available) {
-            return TranscriptionResult("", true, mode = currentMode.get())
-                .also { /* model not ready */ }
+            return TranscriptionResult("", currentMode)
         }
 
-        // Save audio bytes to a temp file
+        // Determine if input is already PCM or needs conversion
+        val isRawPcm = mimeType?.contains("pcm") == true || mimeType?.contains("raw") == true
+
+        // Save uploaded bytes to a temp file
         val ext = when {
             mimeType?.contains("webm") == true -> "webm"
             mimeType?.contains("ogg") == true || mimeType?.contains("opus") == true -> "ogg"
@@ -228,13 +251,27 @@ class SpeechRecognizerManager(private val context: Context) {
             mimeType?.contains("wav") == true -> "wav"
             mimeType?.contains("mp3") == true -> "mp3"
             mimeType?.contains("amr") == true -> "amr"
+            mimeType?.contains("pcm") == true || mimeType?.contains("raw") == true -> "pcm"
             else -> "wav"
         }
 
         val tempFile = File(context.cacheDir, "stt_input_${System.currentTimeMillis()}.$ext")
         try {
             FileOutputStream(tempFile).use { it.write(audioBytes) }
-            return transcribeFileInternal(recognizer, tempFile, Uri.fromFile(tempFile))
+
+            if (isRawPcm) {
+                // Already PCM, use directly
+                return transcribeWithPfd(currentRecognizer, tempFile)
+            } else {
+                // Convert to PCM first
+                val pcmFile = File(context.cacheDir, "stt_pcm_${System.currentTimeMillis()}.pcm")
+                try {
+                    convertToPcmFromFile(tempFile, pcmFile)
+                    return transcribeWithPfd(currentRecognizer, pcmFile)
+                } finally {
+                    pcmFile.delete()
+                }
+            }
         } finally {
             tempFile.delete()
         }
@@ -244,42 +281,197 @@ class SpeechRecognizerManager(private val context: Context) {
      * Transcribe an audio file given a content URI (e.g. from MediaRecorder output).
      */
     suspend fun transcribeUri(uri: Uri): TranscriptionResult {
-        val recognizer = recognizerRef.get()
-            ?: return TranscriptionResult("", true, mode = "none")
+        val currentRecognizer = recognizer
+            ?: return TranscriptionResult("", "none")
 
-        return transcribeFileInternal(recognizer, null, uri)
+        if (_modelStatus.value !is ModelStatus.Available) {
+            return TranscriptionResult("", currentMode)
+        }
+
+        // Convert to PCM and write to a temp file, then use PFD
+        val tempPcmFile = File(context.cacheDir, "stt_pcm_${System.currentTimeMillis()}.pcm")
+        try {
+            convertToPcm(uri, tempPcmFile)
+            return transcribeWithPfd(currentRecognizer, tempPcmFile)
+        } finally {
+            tempPcmFile.delete()
+        }
     }
 
-    private suspend fun transcribeFileInternal(
-        recognizer: SpeechRecognizer,
-        tempFile: File?,
-        uri: Uri
-    ): TranscriptionResult {
-        return coroutineScope {
-            val result = MutableStateFlow<TranscriptionResult?>(null)
-            val job = scope.launch {
-                try {
-                    recognizer.transcribe(uri)
-                        .collect { speechResult ->
-                            val transcription = TranscriptionResult(
-                                text = speechResult.text,
-                                isFinal = speechResult.isFinal,
-                                confidence = speechResult.confidence,
-                                mode = currentMode.get()
-                            )
-                            result.value = transcription
-                        }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Transcription error: ${e.message}", e)
-                    result.value = TranscriptionResult(
-                        text = "",
-                        isFinal = true,
-                        mode = currentMode.get()
-                    )
+    /**
+     * Transcribe using a ParcelFileDescriptor from a file.
+     * The file must be raw 16-bit PCM mono 16kHz.
+     */
+    private suspend fun transcribeWithPfd(
+        currentRecognizer: SpeechRecognizer,
+        audioFile: File
+    ): TranscriptionResult = coroutineScope {
+        val resultText = MutableStateFlow("")
+        val completed = CompletableDeferred<Boolean>()
+
+        try {
+            val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
+            val audioSource = AudioSource.fromPfd(pfd)
+
+            val request = SpeechRecognizerRequest.builder().apply {
+                audioSource = audioSource
+            }.build()
+
+            @OptIn(kotlin.concurrent.ExperimentalAtomicApi::class)
+            currentRecognizer.startRecognition(request).collect { response ->
+                when (response) {
+                    is SpeechRecognizerResponse.PartialTextResponse -> {
+                        resultText.value = response.text
+                        Log.d(TAG, "Partial: ${response.text}")
+                    }
+                    is SpeechRecognizerResponse.FinalTextResponse -> {
+                        resultText.value = response.text
+                        Log.i(TAG, "Final: ${response.text}")
+                    }
+                    is SpeechRecognizerResponse.ErrorResponse -> {
+                        Log.e(TAG, "Recognition error: ${response.e.message}")
+                        completed.complete(false)
+                    }
+                    is SpeechRecognizerResponse.CompletedResponse -> {
+                        Log.i(TAG, "Recognition completed")
+                        completed.complete(true)
+                    }
                 }
             }
-            job.join()
-            result.value ?: TranscriptionResult("", true, mode = currentMode.get())
+
+            // If we get here, the flow completed without a CompletedResponse
+            if (!completed.isCompleted) {
+                completed.complete(true)
+            }
+
+            pfd.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Transcription error: ${e.message}", e)
+            if (!completed.isCompleted) {
+                completed.complete(false)
+            }
+        }
+
+        TranscriptionResult(
+            text = resultText.value,
+            mode = currentMode
+        )
+    }
+
+    /**
+     * Convert audio from a content URI to raw PCM (16-bit, mono, 16kHz) using MediaCodec.
+     * Required because ML Kit GenAI Speech Recognition only accepts PCM input via fromPfd().
+     */
+    private fun convertToPcm(inputUri: Uri, outputFile: File) {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(context, inputUri, null)
+            convertToPcmWithExtractor(extractor, outputFile)
+        } finally {
+            extractor.release()
+        }
+    }
+
+    /**
+     * Convert audio from a local file to raw PCM using MediaCodec.
+     */
+    private fun convertToPcmFromFile(inputFile: File, outputFile: File) {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(inputFile.absolutePath)
+            convertToPcmWithExtractor(extractor, outputFile)
+        } finally {
+            extractor.release()
+        }
+    }
+
+    /**
+     * Shared conversion logic using a configured MediaExtractor.
+     * Decodes compressed audio to raw 16-bit PCM using MediaCodec.
+     * If the track is already raw (audio/raw), the extractor data is read
+     * and written directly to the output file.
+     */
+    private fun convertToPcmWithExtractor(extractor: MediaExtractor, outputFile: File) {
+        val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
+            val format = extractor.getTrackFormat(i)
+            format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+        } ?: throw IllegalArgumentException("No audio track found")
+
+        extractor.selectTrack(trackIndex)
+        val format = extractor.getTrackFormat(trackIndex)
+        val mime = format.getString(MediaFormat.KEY_MIME) ?: "audio/raw"
+
+        if (mime == "audio/raw") {
+            // Already raw audio, read samples and write directly
+            FileOutputStream(outputFile).use { output ->
+                val sampleBuffer = ByteArray(8192)
+                while (true) {
+                    val sampleSize = extractor.readSampleData(sampleBuffer, 0)
+                    if (sampleSize <= 0) break
+                    output.write(sampleBuffer, 0, sampleSize)
+                    extractor.advance()
+                }
+            }
+            return
+        }
+
+        // Use MediaCodec to decode compressed audio to PCM
+        val decoder = android.media.MediaCodec.createDecoderByType(mime)
+        decoder.configure(format, null, null, 0)
+        decoder.start()
+
+        val bufferInfo = android.media.MediaCodec.BufferInfo()
+        val outputStream = FileOutputStream(outputFile)
+
+        var inputDone = false
+        var outputDone = false
+
+        try {
+            while (!outputDone) {
+                // Feed input
+                if (!inputDone) {
+                    val inputBufferIndex = decoder.dequeueInputBuffer(10000)
+                    if (inputBufferIndex >= 0) {
+                        val inputBuffer = decoder.getInputBuffer(inputBufferIndex)
+                        val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
+                        if (sampleSize < 0) {
+                            decoder.queueInputBuffer(
+                                inputBufferIndex, 0, 0, 0,
+                                android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                            )
+                            inputDone = true
+                        } else {
+                            decoder.queueInputBuffer(
+                                inputBufferIndex, 0, sampleSize,
+                                extractor.sampleTime, 0
+                            )
+                            extractor.advance()
+                        }
+                    }
+                }
+
+                // Read output
+                val outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 10000)
+                if (outputBufferIndex >= 0) {
+                    if (bufferInfo.flags and android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        outputDone = true
+                    }
+                    val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
+                    if (outputBuffer != null && bufferInfo.size > 0) {
+                        val data = ByteArray(bufferInfo.size)
+                        outputBuffer.position(bufferInfo.offset)
+                        outputBuffer.get(data)
+                        outputStream.write(data)
+                    }
+                    decoder.releaseOutputBuffer(outputBufferIndex, false)
+                }
+            }
+
+            outputStream.flush()
+        } finally {
+            outputStream.close()
+            decoder.stop()
+            decoder.release()
         }
     }
 
@@ -287,8 +479,8 @@ class SpeechRecognizerManager(private val context: Context) {
      * Release resources.
      */
     fun shutdown() {
-        recognizerRef.get()?.close()
-        recognizerRef.set(null)
+        recognizer?.close()
+        recognizer = null
         scope.cancel()
     }
 }
