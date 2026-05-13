@@ -171,7 +171,6 @@ class SpeechRecognizerManager(private val context: Context) {
 
         return try {
             _modelStatus.value = ModelStatus.Downloading(0)
-            @OptIn(kotlin.concurrent.ExperimentalAtomicApi::class)
             currentRecognizer.download().collect { downloadStatus ->
                 when (downloadStatus) {
                     is DownloadStatus.DownloadProgress -> {
@@ -311,13 +310,12 @@ class SpeechRecognizerManager(private val context: Context) {
 
         try {
             val pfd = ParcelFileDescriptor.open(audioFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            val audioSource = AudioSource.fromPfd(pfd)
+            val src = AudioSource.fromPfd(pfd)
 
             val request = SpeechRecognizerRequest.builder().apply {
-                audioSource = audioSource
+                audioSource = src
             }.build()
 
-            @OptIn(kotlin.concurrent.ExperimentalAtomicApi::class)
             currentRecognizer.startRecognition(request).collect { response ->
                 when (response) {
                     is SpeechRecognizerResponse.PartialTextResponse -> {
@@ -404,11 +402,11 @@ class SpeechRecognizerManager(private val context: Context) {
         if (mime == "audio/raw") {
             // Already raw audio, read samples and write directly
             FileOutputStream(outputFile).use { output ->
-                val sampleBuffer = ByteArray(8192)
+                val sampleBuffer = java.nio.ByteBuffer.allocate(8192)
                 while (true) {
                     val sampleSize = extractor.readSampleData(sampleBuffer, 0)
                     if (sampleSize <= 0) break
-                    output.write(sampleBuffer, 0, sampleSize)
+                    output.write(sampleBuffer.array(), sampleBuffer.arrayOffset(), sampleSize)
                     extractor.advance()
                 }
             }
