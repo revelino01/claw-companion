@@ -68,9 +68,6 @@ dependencies {
     // ML Kit Text Recognition (on-device)
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
-    // ML Kit GenAI Speech Recognition (on-device, Gemini Nano)
-    implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha1")
-
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

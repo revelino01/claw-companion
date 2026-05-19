@@ -143,7 +143,7 @@ class ClawAccessibilityService : AccessibilityService() {
             node.getChild(i)?.let { child ->
                 val found = findNodeById(child, viewId)
                 if (found != null) {
-                    child.recycle()
+                    // Don't recycle child — its subtree contains 'found' which is returned
                     return found
                 }
                 child.recycle()
@@ -162,11 +162,12 @@ class ClawAccessibilityService : AccessibilityService() {
     private fun findNodesByText(node: AccessibilityNodeInfo, text: String, results: MutableList<AccessibilityNodeInfo>) {
         if (node.text?.toString()?.contains(text, ignoreCase = true) == true ||
             node.contentDescription?.toString()?.contains(text, ignoreCase = true) == true) {
-            results.add(node)
+            results.add(AccessibilityNodeInfo.obtain(node))  // Copy — original will be recycled
         }
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
                 findNodesByText(child, text, results)
+                child.recycle()
             }
         }
     }
@@ -204,12 +205,7 @@ class ClawAccessibilityService : AccessibilityService() {
     }
 
     fun pressNotifications(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // GLOBAL_ACTION_ACCESS_NOTIFICATIONS = 8 (added in API 31)
-            performGlobalAction(8)
-        } else {
-            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-        }
+        return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
     }
 
     fun pressQuickSettings(): Boolean {
