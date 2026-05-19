@@ -29,6 +29,9 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
 | `/screenshot` | GET | Screenshot (requires MediaProjection) |
 | `/screenshot/grant` | GET | Request MediaProjection permission (opens system dialog) |
 | `/ocr` | GET | OCR text recognition from current screen (uses ML Kit) |
+| `/settings/system` | GET/POST/DELETE | System settings (read/write/delete) |
+| `/settings/secure` | GET/POST/DELETE | Secure settings — requires `WRITE_SECURE_SETTINGS` via ADB |
+| `/settings/global` | GET/POST/DELETE | Global settings — requires `WRITE_SECURE_SETTINGS` via ADB |
 
 ## Setup
 
@@ -37,7 +40,8 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
 3. Enable **Notification Access** for Claw Companion
 4. Enable **Draw Over Other Apps** (for future features)
 5. Grant SMS, Contacts, Call Log permissions
-6. Start the service — it runs on `http://localhost:18790`
+6. *(Optional)* For secure/global settings editing: `adb shell pm grant com.claw.companion android.permission.WRITE_SECURE_SETTINGS`
+7. Start the service — it runs on `http://localhost:18790`
 
 ## Usage from OpenClaw
 
@@ -56,6 +60,20 @@ curl -s -X POST http://localhost:18790/press -H 'Content-Type: application/json'
 
 # Read notifications
 curl -s http://localhost:18790/notifications | jq
+
+# Read a setting
+
+curl -s http://localhost:18790/settings/secure?key=wifi_on
+
+# Write a setting
+
+curl -s -X POST http://localhost:18790/settings/system \
+  -H 'Content-Type: application/json' -d '{"key":"screen_brightness","value":"128","type":"int"}'
+
+# Delete a setting
+
+curl -s -X DELETE http://localhost:18790/settings/system \
+  -H 'Content-Type: application/json' -d '{"key":"some_key"}'
 
 # Get a screenshot (PNG)
 curl -s http://localhost:18790/screenshot --output screenshot.png
