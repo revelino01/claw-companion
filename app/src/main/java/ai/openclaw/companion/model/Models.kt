@@ -60,3 +60,33 @@ data class SttTranscribeRequest(
     val locale: String? = null,
     val mode: String? = null  // "advanced" or "basic"
 )
+
+/**
+ * Settings database request/response models
+ */
+data class SettingsReadRequest(
+    val key: String? = null,
+    val prefix: String? = null
+)
+
+data class SettingsWriteRequest(
+    val key: String,
+    val value: String,
+    val type: String = "string"  // "string", "int", "float"
+)
+
+data class SettingsDeleteRequest(
+    val key: String
+)
+
+data class SettingsValueResponse(
+    val key: String,
+    val value: Any?,
+    val type: String
+)
+
+data class SettingsListResponse(
+    val namespace: String,
+    val count: Int,
+    val settings: List<Map<String, Any?>>
+)

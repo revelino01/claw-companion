@@ -42,7 +42,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         if (session.method == Method.OPTIONS) {
             return newFixedLengthResponse(Response.Status.OK, "text/plain", "").apply {
                 addHeader("Access-Control-Allow-Origin", "*")
-                addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
                 addHeader("Access-Control-Allow-Headers", "Content-Type")
                 addHeader("Access-Control-Max-Age", "86400")
             }
@@ -120,6 +120,11 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                 uri == "/stt/status" && method == Method.GET -> getSttStatus()
                 uri == "/stt/download" && method == Method.POST -> downloadSttModel()
                 uri == "/stt/transcribe" && method == Method.POST -> transcribeAudio(session)
+
+                // ─── Settings Database ──────────────────────
+                uri.startsWith("/settings/") && method == Method.GET -> getSettings(uri, params)
+                uri.startsWith("/settings/") && method == Method.POST -> writeSetting(uri, session)
+                uri.startsWith("/settings/") && method == Method.DELETE -> deleteSetting(uri, session)
 
                 // ─── Service Control ────────────────────────
                 uri == "/stop" && method == Method.POST -> stopService()
@@ -722,6 +727,177 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         }
     }
 
+    // ─── Settings Database ────────────────────────────────────
+
+    private fun getSettingsNamespace(uri: String): String {
+        return when {
+            uri.startsWith("/settings/system") -> "system"
+            uri.startsWith("/settings/secure") -> "secure"
+            uri.startsWith("/settings/global") -> "global"
+            else -> ""
+        }
+    }
+
+    private fun canWriteSecureSettings(): Boolean {
+        return context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun getSettings(uri: String, params: Map<String, String>): Response {
+        val namespace = getSettingsNamespace(uri)
+        if (namespace.isEmpty()) return errorResponse(400, "Invalid settings namespace. Use /settings/system, /settings/secure, or /settings/global")
+
+        // List all settings if no key provided
+        val key = params["key"]
+        val prefix = params["prefix"]
+
+        return try {
+            if (key != null) {
+                // Read single setting
+                val value = when (namespace) {
+                    "system" -> Settings.System.getString(context.contentResolver, key)
+                    "secure" -> Settings.Secure.getString(context.contentResolver, key)
+                    "global" -> Settings.Global.getString(context.contentResolver, key)
+                    else -> null
+                }
+                val type = when {
+                    value == null -> "null"
+                    value.toIntOrNull() != null -> "int"
+                    value.toFloatOrNull() != null -> "float"
+                    else -> "string"
+                }
+                json(ApiResponse(true, mapOf(
+                    "namespace" to namespace,
+                    "key" to key,
+                    "value" to value,
+                    "type" to type
+                )))
+            } else {
+                // List all settings with optional prefix filter
+                val cursor = when (namespace) {
+                    "system" -> context.contentResolver.query(Settings.System.CONTENT_URI, null, null, null, null)
+                    "secure" -> context.contentResolver.query(Settings.Secure.CONTENT_URI, null, null, null, null)
+                    "global" -> context.contentResolver.query(Settings.Global.CONTENT_URI, null, null, null, null)
+                    else -> null
+                }
+
+                val settings = mutableListOf<Map<String, Any?>>()
+                cursor?.use {
+                    val nameIndex = it.getColumnIndex("name")
+                    val valueIndex = it.getColumnIndex("value")
+                    while (it.moveToNext()) {
+                        val name = it.getString(nameIndex)
+                        if (prefix == null || name.startsWith(prefix)) {
+                            val value = it.getString(valueIndex)
+                            val type = when {
+                                value == null -> "null"
+                                value.toIntOrNull() != null -> "int"
+                                value.toFloatOrNull() != null -> "float"
+                                else -> "string"
+                            }
+                            settings.add(mapOf(
+                                "key" to name,
+                                "value" to value,
+                                "type" to type
+                            ))
+                        }
+                    }
+                }
+                json(ApiResponse(true, mapOf(
+                    "namespace" to namespace,
+                    "count" to settings.size,
+                    "settings" to settings
+                )))
+            }
+        } catch (e: Exception) {
+            errorResponse(500, "Failed to read settings: ${e.message}")
+        }
+    }
+
+    private fun writeSetting(uri: String, session: IHTTPSession): Response {
+        val namespace = getSettingsNamespace(uri)
+        if (namespace.isEmpty()) return errorResponse(400, "Invalid settings namespace. Use /settings/system, /settings/secure, or /settings/global")
+
+        if ((namespace == "secure" || namespace == "global") && !canWriteSecureSettings()) {
+            return errorResponse(403, "WRITE_SECURE_SETTINGS not granted. Run: adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS")
+        }
+
+        val req = parseBody(session, SettingsWriteRequest::class.java) ?: return errorResponse(400, "Invalid request. Expected: {\"key\": \"...\", \"value\": \"...\", \"type\": \"string|int|float\"}")
+
+        return try {
+            val success = when (namespace) {
+                "system" -> {
+                    when (req.type.lowercase()) {
+                        "int" -> Settings.System.putInt(context.contentResolver, req.key, req.value.toIntOrNull() ?: 0)
+                        "float" -> Settings.System.putFloat(context.contentResolver, req.key, req.value.toFloatOrNull() ?: 0f)
+                        else -> Settings.System.putString(context.contentResolver, req.key, req.value)
+                    }
+                }
+                "secure" -> {
+                    when (req.type.lowercase()) {
+                        "int" -> Settings.Secure.putInt(context.contentResolver, req.key, req.value.toIntOrNull() ?: 0)
+                        "float" -> Settings.Secure.putFloat(context.contentResolver, req.key, req.value.toFloatOrNull() ?: 0f)
+                        else -> Settings.Secure.putString(context.contentResolver, req.key, req.value)
+                    }
+                }
+                "global" -> {
+                    when (req.type.lowercase()) {
+                        "int" -> Settings.Global.putInt(context.contentResolver, req.key, req.value.toIntOrNull() ?: 0)
+                        "float" -> Settings.Global.putFloat(context.contentResolver, req.key, req.value.toFloatOrNull() ?: 0f)
+                        else -> Settings.Global.putString(context.contentResolver, req.key, req.value)
+                    }
+                }
+                else -> false
+            }
+            if (success) {
+                json(ApiResponse(true, mapOf(
+                    "namespace" to namespace,
+                    "key" to req.key,
+                    "value" to req.value,
+                    "type" to req.type
+                )))
+            } else {
+                errorResponse(500, "Failed to write setting")
+            }
+        } catch (e: Exception) {
+            errorResponse(500, "Failed to write setting: ${e.message}")
+        }
+    }
+
+    private fun deleteSetting(uri: String, session: IHTTPSession): Response {
+        val namespace = getSettingsNamespace(uri)
+        if (namespace.isEmpty()) return errorResponse(400, "Invalid settings namespace. Use /settings/system, /settings/secure, or /settings/global")
+
+        if ((namespace == "secure" || namespace == "global") && !canWriteSecureSettings()) {
+            return errorResponse(403, "WRITE_SECURE_SETTINGS not granted. Run: adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS")
+        }
+
+        val req = parseBody(session, SettingsDeleteRequest::class.java) ?: return errorResponse(400, "Invalid request. Expected: {\"key\": \"...\"}")
+
+        return try {
+            // Android Settings API doesn't have a direct delete, so we set to empty string
+            // For int/float, we can't truly delete, but we can set string to empty
+            val success = when (namespace) {
+                "system" -> Settings.System.putString(context.contentResolver, req.key, "")
+                "secure" -> Settings.Secure.putString(context.contentResolver, req.key, "")
+                "global" -> Settings.Global.putString(context.contentResolver, req.key, "")
+                else -> false
+            }
+            if (success) {
+                json(ApiResponse(true, mapOf(
+                    "namespace" to namespace,
+                    "key" to req.key,
+                    "deleted" to true,
+                    "note" to "Setting set to empty string. True deletion not supported by Android Settings API."
+                )))
+            } else {
+                errorResponse(500, "Failed to delete setting")
+            }
+        } catch (e: Exception) {
+            errorResponse(500, "Failed to delete setting: ${e.message}")
+        }
+    }
+
     // ─── Helpers ───────────────────────────────────────────────
 
     private fun trimTree(node: TreeNode, maxDepth: Int): Map<String, Any?> {
@@ -794,7 +970,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
             gson.toJson(data)
         ).apply {
             addHeader("Access-Control-Allow-Origin", "*")
-            addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
             addHeader("Access-Control-Allow-Headers", "Content-Type")
         }
     }
