@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else true
-        val hasScreenshot = ScreenCaptureManager.isGranted
+        val hasScreenshot = ScreenCaptureManager.isGranted || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && ClawAccessibilityService.instance != null)
 
         updateBadge(accessibilityBadge, hasAccessibility)
         updateBadge(notificationBadge, hasNotification)
@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             statusText.setTextColor(getColor(R.color.status_running))
             statusDot.setBackgroundResource(R.drawable.status_dot_running)
             statusAccentBar.setBackgroundColor(getColor(R.color.status_running))
-            addressText.text = "http://localhost:${ClawApp.DEFAULT_PORT}"
+            addressText.text = "http://localhost:${ClawForegroundService.actualPort}"
             toggleServiceBtn.text = "Stop"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_pause)
         } else {
@@ -174,10 +174,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isServiceRunning(context: Context): Boolean {
-        val am = context.getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        @Suppress("DEPRECATION")
-        val services = am.getRunningServices(Int.MAX_VALUE)
-        return services.any { it.service.className == ClawForegroundService::class.java.name }
+        return ClawForegroundService.isRunning()
     }
 
     private fun startClawService() {

@@ -26,14 +26,66 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) {
+class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0.0.1", port) {
 
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    companion object {
+        @Volatile
+        private var cachedRecognizer: com.google.mlkit.vision.text.TextRecognizer? = null
+
+        fun getTextRecognizer(): com.google.mlkit.vision.text.TextRecognizer {
+            return cachedRecognizer ?: synchronized(this) {
+                cachedRecognizer ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also {
+                    cachedRecognizer = it
+                }
+            }
+        }
+
+        fun closeRecognizer() {
+            synchronized(this) {
+                try {
+                    cachedRecognizer?.close()
+                } catch (_: Exception) {}
+                cachedRecognizer = null
+            }
+        }
+    }
+
+    init {
+        // High-performance: store temporary POST request bodies in memory to avoid flash storage I/O
+        tempFileManagerFactory = TempFileManagerFactory {
+            object : TempFileManager {
+                private val tempFiles = mutableListOf<TempFile>()
+                override fun createTempFile(filename_hint: String?): TempFile {
+                    val tempFile = object : TempFile {
+                        private val stream = ByteArrayOutputStream()
+                        override fun open(): OutputStream = stream
+                        override fun delete() { stream.reset() }
+                        override fun getName(): String = "memory_temp"
+                    }
+                    tempFiles.add(tempFile)
+                    return tempFile
+                }
+                override fun clear() {
+                    tempFiles.clear()
+                }
+            }
+        }
+    }
+
+    override fun stop() {
+        closeRecognizer()
+        super.stop()
+    }
 
     override fun serve(session: IHTTPSession): Response {
         // Handle CORS preflight
@@ -58,10 +110,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                     "port" to listeningPort,
                     "accessibility" to (ClawAccessibilityService.instance != null),
                     "notificationListener" to (ClawNotificationListener.instance != null),
-                    "uptime" to (System.currentTimeMillis() - context.getSystemService(Context.POWER_SERVICE).let {
-                        // Approximate
-                        0L
-                    })
+                    "uptime" to 0L
                 )))
 
                 // ─── UI Tree ────────────────────────────────
@@ -136,9 +185,9 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
             ?: return errorResponse(503, "Accessibility service not enabled")
 
         val maxDepth = params["depth"]?.toIntOrNull() ?: 50
-        val tree = service.dumpUiTree()
-        val trimmed = trimTree(tree, maxDepth)
-        return json(ApiResponse(true, trimmed))
+        val prune = params["prune"]?.toBooleanStrictOrNull() ?: false
+        val treeMap = service.dumpUiMap(maxDepth, prune)
+        return json(ApiResponse(true, treeMap))
     }
 
     private fun findNode(session: IHTTPSession): Response {
@@ -161,7 +210,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                     },
                     "clickable" to node.isClickable
                 ))
-                node.recycle()
             }
         }
         if (req.text != null) {
@@ -279,10 +327,13 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         val success = if (req.viewId != null) {
             service.setText(req.viewId, req.text)
         } else {
-            // Fallback: use clipboard paste
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("claw", req.text))
-            // Simulate paste gesture would need accessibility, return clipboard set status
+            // First attempt to type directly into currently focused input field
+            val typed = service.typeIntoFocusedNode(req.text)
+            if (!typed) {
+                // Fallback: set primary clip
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("claw", req.text))
+            }
             true
         }
         return json(ApiResponse(success))
@@ -297,7 +348,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
             val intent = when {
                 req.action != null -> Intent(req.action)
                 req.`package` != null -> {
-                    // Try launch intent first, fallback to MAIN/LAUNCHER
                     context.packageManager.getLaunchIntentForPackage(req.`package`)
                         ?: Intent(Intent.ACTION_MAIN).apply {
                             addCategory(Intent.CATEGORY_LAUNCHER)
@@ -324,19 +374,39 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── Screenshot ────────────────────────────────────────────
 
     private fun screenshot(params: Map<String, String>): Response {
-        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+        val formatParam = params["format"]?.lowercase() ?: "jpeg"
+        val quality = params["quality"]?.toIntOrNull()?.coerceIn(10, 100) ?: 80
+
+        // High reliability: try native accessibility screenshot first (zero dialog popup, instant),
+        // fallback to MediaProjection if unavailable.
+        val bitmap = ClawAccessibilityService.instance?.takeScreenshot()
+            ?: ScreenCaptureManager.captureScreenshot(context)
             ?: return errorResponse(500, ScreenCaptureManager.lastError ?: "Capture failed")
 
-        val format = when (params["format"]?.lowercase()) {
-            "jpeg", "jpg" -> Pair(Bitmap.CompressFormat.JPEG, "image/jpeg")
-            else -> Pair(Bitmap.CompressFormat.PNG, "image/png")
+        val (compressFormat, mimeType) = when (formatParam) {
+            "png" -> Pair(Bitmap.CompressFormat.PNG, "image/png")
+            "webp" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Pair(Bitmap.CompressFormat.WEBP_LOSSY, "image/webp")
+                } else {
+                    @Suppress("DEPRECATION")
+                    Pair(Bitmap.CompressFormat.WEBP, "image/webp")
+                }
+            }
+            else -> Pair(Bitmap.CompressFormat.JPEG, "image/jpeg")
         }
 
         val stream = ByteArrayOutputStream()
-        bitmap.compress(format.first, 90, stream)
+        bitmap.compress(compressFormat, quality, stream)
         bitmap.recycle()
 
-        return newFixedLengthResponse(Response.Status.OK, format.second, stream.toByteArray().inputStream(), stream.size().toLong()).apply {
+        val bytes = stream.toByteArray()
+        return newFixedLengthResponse(
+            Response.Status.OK,
+            mimeType,
+            ByteArrayInputStream(bytes),
+            bytes.size.toLong()
+        ).apply {
             addHeader("Access-Control-Allow-Origin", "*")
             addHeader("Cache-Control", "no-cache")
         }
@@ -355,14 +425,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── OCR ────────────────────────────────────────────────────
 
     private fun ocr(params: Map<String, String>): Response {
-        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+        val bitmap = ClawAccessibilityService.instance?.takeScreenshot()
+            ?: ScreenCaptureManager.captureScreenshot(context)
             ?: return errorResponse(500, "Screenshot failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
 
         val inputImage = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recognizer = getTextRecognizer()
 
-        // Run OCR synchronously with a latch
-        val latch = java.util.concurrent.CountDownLatch(1)
+        val latch = CountDownLatch(1)
         val resultRef = AtomicReference<com.google.mlkit.vision.text.Text?>(null)
         val errorRef = AtomicReference<Exception?>(null)
 
@@ -378,7 +448,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
 
         latch.await(10, TimeUnit.SECONDS)
         bitmap.recycle()
-        recognizer.close()  // ← FIX: close recognizer to free native resources
 
         val error = errorRef.get()
         if (error != null) {
@@ -460,20 +529,27 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                 Telephony.Sms.READ
             )
             context.contentResolver.query(uri, projection, null, null, "${Telephony.Sms.DATE} DESC")?.use { cursor ->
+                val idIdx = cursor.getColumnIndex(Telephony.Sms._ID)
+                val addrIdx = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
+                val bodyIdx = cursor.getColumnIndex(Telephony.Sms.BODY)
+                val dateIdx = cursor.getColumnIndex(Telephony.Sms.DATE)
+                val typeIdx = cursor.getColumnIndex(Telephony.Sms.TYPE)
+                val readIdx = cursor.getColumnIndex(Telephony.Sms.READ)
+
                 var count = 0
                 while (cursor.moveToNext() && count < limit) {
-                    val type = cursor.getInt(cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE))
+                    val type = if (typeIdx != -1) cursor.getInt(typeIdx) else 0
                     conversations.add(mapOf(
-                        "id" to cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms._ID)),
-                        "address" to cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)),
-                        "body" to cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)),
-                        "date" to cursor.getLong(cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)),
+                        "id" to if (idIdx != -1) cursor.getString(idIdx) else "",
+                        "address" to if (addrIdx != -1) cursor.getString(addrIdx) else "",
+                        "body" to if (bodyIdx != -1) cursor.getString(bodyIdx) else "",
+                        "date" to if (dateIdx != -1) cursor.getLong(dateIdx) else 0L,
                         "type" to when (type) {
                             Telephony.Sms.MESSAGE_TYPE_INBOX -> "received"
                             Telephony.Sms.MESSAGE_TYPE_SENT -> "sent"
                             else -> "other"
                         },
-                        "read" to (cursor.getInt(cursor.getColumnIndexOrThrow(Telephony.Sms.READ)) == 1)
+                        "read" to if (readIdx != -1) (cursor.getInt(readIdx) == 1) else false
                     ))
                     count++
                 }
@@ -492,8 +568,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
         val text = body["text"] ?: return errorResponse(400, "Missing text")
 
         return try {
-            val sentIntent = Intent("SMS_SENT")
-            val deliveredIntent = Intent("SMS_DELIVERED")
             val smsManager = android.telephony.SmsManager.getDefault()
             smsManager.sendMultipartTextMessage(address, null, smsManager.divideMessage(text), null, null)
             json(ApiResponse(true))
@@ -693,21 +767,23 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                 cursor?.use {
                     val nameIndex = it.getColumnIndex("name")
                     val valueIndex = it.getColumnIndex("value")
-                    while (it.moveToNext()) {
-                        val name = it.getString(nameIndex)
-                        if (prefix == null || name.startsWith(prefix)) {
-                            val value = it.getString(valueIndex)
-                            val type = when {
-                                value == null -> "null"
-                                value.toIntOrNull() != null -> "int"
-                                value.toFloatOrNull() != null -> "float"
-                                else -> "string"
+                    if (nameIndex != -1 && valueIndex != -1) {
+                        while (it.moveToNext()) {
+                            val name = it.getString(nameIndex) ?: continue
+                            if (prefix == null || name.startsWith(prefix)) {
+                                val value = it.getString(valueIndex)
+                                val type = when {
+                                    value == null -> "null"
+                                    value.toIntOrNull() != null -> "int"
+                                    value.toFloatOrNull() != null -> "float"
+                                    else -> "string"
+                                }
+                                settings.add(mapOf(
+                                    "key" to name,
+                                    "value" to value,
+                                    "type" to type
+                                ))
                             }
-                            settings.add(mapOf(
-                                "key" to name,
-                                "value" to value,
-                                "type" to type
-                            ))
                         }
                     }
                 }
@@ -807,6 +883,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     // ─── Service Control ───────────────────────────────────────
 
     private fun stopService(): Response {
+        closeRecognizer()
         val intent = Intent(context, ClawForegroundService::class.java).apply {
             action = ClawForegroundService.ACTION_STOP
         }
@@ -815,27 +892,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
     }
 
     // ─── Helpers ───────────────────────────────────────────────
-
-    private fun trimTree(node: TreeNode, maxDepth: Int): Map<String, Any?> {
-        if (node.depth > maxDepth) return emptyMap()
-
-        val result = mutableMapOf<String, Any?>(
-            "className" to node.className.takeLastWhile { it != '.' },
-            "text" to node.text.take(200),
-            "contentDescription" to node.contentDescription.take(200),
-            "viewId" to node.viewIdResourceName,
-            "bounds" to node.bounds,
-            "clickable" to node.clickable,
-            "scrollable" to node.scrollable,
-            "enabled" to node.enabled
-        )
-        if (node.checked != null) result["checked"] = node.checked
-        if (node.selected) result["selected"] = node.selected
-        if (node.children.isNotEmpty()) {
-            result["children"] = node.children.map { trimTree(it, maxDepth) }
-        }
-        return result
-    }
 
     private fun parseParams(session: IHTTPSession): Map<String, String> {
         val params = mutableMapOf<String, String>()
@@ -856,7 +912,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
                 val postData = bodyMap["postData"] ?: return null
                 gson.fromJson(postData, clazz)
             } else {
-                // Try query params for GET-style requests
                 null
             }
         } catch (e: Exception) {
@@ -908,6 +963,4 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD(port) 
             addHeader("Access-Control-Allow-Origin", "*")
         }
     }
-
-
 }

@@ -76,10 +76,12 @@ object ScreenCaptureManager {
             mp.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     mediaProjection = null
+                    isGranted = false
                 }
             }, handler)
 
             mediaProjection = mp
+            ClawForegroundService.instance?.updateForegroundServiceTypeForMediaProjection()
             mp
         } catch (e: Exception) {
             lastError = "Projection setup failed: ${e.message}"
@@ -149,7 +151,9 @@ object ScreenCaptureManager {
             rawBitmap.copyPixelsFromBuffer(buffer)
 
             val result = if (rowPadding > 0) {
-                Bitmap.createBitmap(rawBitmap, 0, 0, w, h)
+                val cropped = Bitmap.createBitmap(rawBitmap, 0, 0, w, h)
+                rawBitmap.recycle()
+                cropped
             } else {
                 rawBitmap
             }

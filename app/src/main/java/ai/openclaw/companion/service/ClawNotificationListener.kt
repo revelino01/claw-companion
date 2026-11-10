@@ -66,7 +66,9 @@ class ClawNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        // No-op for now
+        sbn ?: return
+        val key = sbn.key ?: return
+        recentNotifications.removeIf { it.optString("key") == key }
     }
 
     fun dismissNotification(key: String): Boolean {
