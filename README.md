@@ -53,6 +53,27 @@ AI Companion runs entirely on your Android device as a foreground service with a
    * If approved, the screenshot endpoint is active.
    * If declined, the server continues running normally with screenshots disabled. Simply toggle the service off and on again to re-prompt.
 
+## AI Agent Skill
+
+This repository includes a ready-to-use AI Agent Skill in [`skills/ai-companion/`](skills/ai-companion/) for autonomous agents (Antigravity, OpenClaw, Claude Code, etc.), featuring zero-dependency CLI wrappers:
+
+- **Bash & curl CLI**: [`skills/ai-companion/scripts/companion.sh`](skills/ai-companion/scripts/companion.sh)
+- **Python CLI**: [`skills/ai-companion/scripts/companion.py`](skills/ai-companion/scripts/companion.py)
+- **Agent Playbook**: [`skills/ai-companion/SKILL.md`](skills/ai-companion/SKILL.md)
+- **API Reference**: [`skills/ai-companion/references/api_reference.md`](skills/ai-companion/references/api_reference.md)
+
+Quick execution example:
+```bash
+# Health check
+./skills/ai-companion/scripts/companion.sh health
+
+# Inspect UI tree
+./skills/ai-companion/scripts/companion.sh ui true
+
+# Tap coordinates
+./skills/ai-companion/scripts/companion.sh tap 540 1200
+```
+
 ## Usage
 
 The server securely binds to `127.0.0.1:18790`.
