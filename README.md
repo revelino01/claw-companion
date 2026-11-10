@@ -29,7 +29,6 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
 | `/packages` | GET | List installed packages (`?q=name&limit=100`) |
 | `/screenshot` | GET | Screenshot capture (`?format=jpeg|png|webp&quality=80`) |
 | `/screenshot/grant` | GET | Request screen recording permission |
-| `/ocr` | GET | OCR text recognition from current screen (ML Kit) |
 | `/settings/system` | GET/POST/DELETE | System settings (read/write/delete) |
 | `/settings/secure` | GET/POST/DELETE | Secure settings — requires `WRITE_SECURE_SETTINGS` via ADB |
 | `/settings/global` | GET/POST/DELETE | Global settings — requires `WRITE_SECURE_SETTINGS` via ADB |
@@ -47,7 +46,7 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
    adb shell pm grant ai.openclaw.companion android.permission.WRITE_SECURE_SETTINGS
    ```
 7. Start the service in the app — tapping **Start** will launch the local HTTP server and prompt for screen capture permission:
-   * If approved, screenshot & OCR endpoints are active.
+   * If approved, the screenshot endpoint is active.
    * If declined, the server continues running normally with screenshots disabled. Simply toggle the service off and on again to re-prompt.
 
 ## Usage from OpenClaw
@@ -85,9 +84,6 @@ curl -s http://localhost:18790/notifications | jq
 # Get a screenshot (JPEG default, or lossless PNG)
 curl -s http://localhost:18790/screenshot --output screenshot.jpg
 curl -s "http://localhost:18790/screenshot?format=png" --output screenshot.png
-
-# OCR: read text from current screen
-curl -s http://localhost:18790/ocr | jq
 
 # Launch an app
 curl -s -X POST http://localhost:18790/intent -H 'Content-Type: application/json' -d '{"package":"com.whatsapp"}'

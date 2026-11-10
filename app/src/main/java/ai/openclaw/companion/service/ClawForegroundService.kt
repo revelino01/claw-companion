@@ -28,6 +28,15 @@ class ClawForegroundService : Service() {
         var actualPort: Int = ClawApp.DEFAULT_PORT
             private set
 
+        @Volatile
+        var onStateChanged: ((Boolean) -> Unit)? = null
+
+        fun notifyStateChanged(isRunning: Boolean) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                onStateChanged?.invoke(isRunning)
+            }
+        }
+
         const val ACTION_STOP = "ai.openclaw.companion.ACTION_STOP"
         const val CHANNEL_ID = "claw_companion_channel"
         const val NOTIFICATION_ID = 10001
@@ -40,6 +49,7 @@ class ClawForegroundService : Service() {
         super.onCreate()
         instance = this
         running = true
+        notifyStateChanged(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -97,12 +107,14 @@ class ClawForegroundService : Service() {
             server = ClawHttpServer(ClawApp.DEFAULT_PORT, this)
             server?.start()
             actualPort = ClawApp.DEFAULT_PORT
+            notifyStateChanged(true)
         } catch (e: Exception) {
             // Port might be in use, try alternative
             try {
                 server = ClawHttpServer(ClawApp.DEFAULT_PORT + 1, this)
                 server?.start()
                 actualPort = ClawApp.DEFAULT_PORT + 1
+                notifyStateChanged(true)
             } catch (e2: Exception) {
                 stopSelf()
             }
@@ -120,6 +132,7 @@ class ClawForegroundService : Service() {
         wakeLock = null
         running = false
         instance = null
+        notifyStateChanged(false)
         super.onDestroy()
     }
 

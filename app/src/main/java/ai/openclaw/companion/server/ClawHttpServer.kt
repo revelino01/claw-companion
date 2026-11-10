@@ -19,9 +19,6 @@ import ai.openclaw.companion.service.ClawAccessibilityService
 import ai.openclaw.companion.service.ClawForegroundService
 import ai.openclaw.companion.service.ClawNotificationListener
 import ai.openclaw.companion.service.ScreenCaptureManager
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import fi.iki.elonen.NanoHTTPD
@@ -29,36 +26,11 @@ import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
 class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0.0.1", port) {
 
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    companion object {
-        @Volatile
-        private var cachedRecognizer: com.google.mlkit.vision.text.TextRecognizer? = null
-
-        fun getTextRecognizer(): com.google.mlkit.vision.text.TextRecognizer {
-            return cachedRecognizer ?: synchronized(this) {
-                cachedRecognizer ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also {
-                    cachedRecognizer = it
-                }
-            }
-        }
-
-        fun closeRecognizer() {
-            synchronized(this) {
-                try {
-                    cachedRecognizer?.close()
-                } catch (_: Exception) {}
-                cachedRecognizer = null
-            }
-        }
-    }
 
     init {
         // High-performance: store temporary POST request bodies in memory to avoid flash storage I/O
@@ -80,11 +52,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
                 }
             }
         }
-    }
-
-    override fun stop() {
-        closeRecognizer()
-        super.stop()
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -136,7 +103,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
                 // ─── Screenshot ─────────────────────────────
                 uri == "/screenshot" && method == Method.GET -> screenshot(params)
                 uri == "/screenshot/grant" && method == Method.GET -> requestScreenshotGrant()
-                uri == "/ocr" && method == Method.GET -> ocr(params)
 
                 // ─── Notifications ──────────────────────────
                 uri == "/notifications" && method == Method.GET -> getNotifications()
@@ -421,74 +387,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
         }
         context.startActivity(intent)
         return json(ApiResponse(true, mapOf("message" to "Permission dialog opened. Approve it, then retry /screenshot.")))
-    }
-
-    // ─── OCR ────────────────────────────────────────────────────
-
-    private fun ocr(params: Map<String, String>): Response {
-        if (!ScreenCaptureManager.isGranted) {
-            return errorResponse(403, "Screenshot not granted. Turn the server off and on in Claw Companion to enable screen capture.")
-        }
-        val bitmap = ScreenCaptureManager.captureScreenshot(context)
-            ?: ClawAccessibilityService.instance?.takeScreenshot()
-            ?: return errorResponse(500, "Screenshot failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
-
-        val inputImage = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = getTextRecognizer()
-
-        val latch = CountDownLatch(1)
-        val resultRef = AtomicReference<com.google.mlkit.vision.text.Text?>(null)
-        val errorRef = AtomicReference<Exception?>(null)
-
-        recognizer.process(inputImage)
-            .addOnSuccessListener { visionText ->
-                resultRef.set(visionText)
-                latch.countDown()
-            }
-            .addOnFailureListener { e ->
-                errorRef.set(e)
-                latch.countDown()
-            }
-
-        latch.await(10, TimeUnit.SECONDS)
-        bitmap.recycle()
-
-        val error = errorRef.get()
-        if (error != null) {
-            return errorResponse(500, "OCR failed: ${error.message}")
-        }
-
-        val visionText = resultRef.get()
-            ?: return errorResponse(500, "OCR timed out")
-
-        val textBlocks = visionText.textBlocks.map { block ->
-            mapOf(
-                "text" to block.text,
-                "bounds" to rectToString(block.boundingBox),
-                "lines" to block.lines.map { line ->
-                    mapOf(
-                        "text" to line.text,
-                        "bounds" to rectToString(line.boundingBox),
-                        "elements" to line.elements.map { el ->
-                            mapOf(
-                                "text" to el.text,
-                                "bounds" to rectToString(el.boundingBox)
-                            )
-                        }
-                    )
-                }
-            )
-        }
-
-        return json(ApiResponse(true, mapOf(
-            "fullText" to visionText.text,
-            "blocks" to textBlocks
-        )))
-    }
-
-    private fun rectToString(rect: Rect?): String {
-        if (rect == null) return "0,0,0,0"
-        return "${rect.left},${rect.top},${rect.right},${rect.bottom}"
     }
 
     // ─── Notifications ─────────────────────────────────────────
@@ -887,7 +785,6 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
     // ─── Service Control ───────────────────────────────────────
 
     private fun stopService(): Response {
-        closeRecognizer()
         ScreenCaptureManager.releaseProjection()
         val intent = Intent(context, ClawForegroundService::class.java).apply {
             action = ClawForegroundService.ACTION_STOP

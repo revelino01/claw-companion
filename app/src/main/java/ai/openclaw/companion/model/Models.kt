@@ -54,14 +54,6 @@ data class ApiResponse(
 )
 
 /**
- * STT request models
- */
-data class SttTranscribeRequest(
-    val locale: String? = null,
-    val mode: String? = null  // "advanced" or "basic"
-)
-
-/**
  * Settings database request/response models
  */
 data class SettingsReadRequest(

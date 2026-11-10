@@ -83,6 +83,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ClawForegroundService.onStateChanged = {
+            updateServiceStatus()
+        }
         updatePermissionStatuses()
         updateServiceStatus()
 
@@ -91,6 +94,11 @@ class MainActivity : AppCompatActivity() {
             requestMediaProjection()
             intent.removeExtra("request_media_projection")
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ClawForegroundService.onStateChanged = null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -194,7 +202,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        updateServiceStatus()
+        window.decorView.postDelayed({ updateServiceStatus() }, 150)
+        window.decorView.postDelayed({ updateServiceStatus() }, 500)
     }
 
     private fun stopClawService() {
@@ -202,6 +211,7 @@ class MainActivity : AppCompatActivity() {
         intent.action = ClawForegroundService.ACTION_STOP
         startService(intent)
         ScreenCaptureManager.releaseProjection()
+        window.decorView.postDelayed({ updateServiceStatus() }, 150)
         updatePermissionStatuses()
         updateServiceStatus()
     }
