@@ -53,26 +53,48 @@ AI Companion runs entirely on your Android device as a foreground service with a
    * If approved, the screenshot endpoint is active.
    * If declined, the server continues running normally with screenshots disabled. Simply toggle the service off and on again to re-prompt.
 
-## AI Agent Skill
+## ⚡ One-Line Skill Installation
 
-This repository includes a ready-to-use AI Agent Skill in [`skills/ai-companion/`](skills/ai-companion/) for autonomous agents (Antigravity, OpenClaw, Claude Code, etc.), featuring zero-dependency CLI wrappers:
+Install the AI Companion skill and global `companion` CLI across your AI harnesses (**Antigravity**, **OpenClaw**, **Hermes Agent**, and **Pi Agent**) with a single command:
 
-- **Bash & curl CLI**: [`skills/ai-companion/scripts/companion.sh`](skills/ai-companion/scripts/companion.sh)
-- **Python CLI**: [`skills/ai-companion/scripts/companion.py`](skills/ai-companion/scripts/companion.py)
+### Linux / macOS / Android Termux (Bash)
+```bash
+curl -fsSL https://raw.githubusercontent.com/revelino01/claw-companion/main/install.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/revelino01/claw-companion/main/install.ps1 | iex
+```
+
+### Windows (Command Prompt - CMD)
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/revelino01/claw-companion/main/install.ps1 | iex"
+```
+
+The installer automatically:
+1. Deploys the skill definition ([`SKILL.md`](skills/ai-companion/SKILL.md)) and API schemas to:
+   - **Antigravity**: `~/.gemini/antigravity-cli/skills/ai-companion` and `~/.agents/skills/ai-companion`
+   - **OpenClaw**: `~/.openclaw/skills/ai-companion`
+   - **Hermes Agent**: `~/.hermes/skills/ai-companion`
+   - **Pi Agent**: `~/.pi/skills/ai-companion`
+2. Installs the `companion` command globally into your `PATH` so your agent or terminal can execute automation tasks directly:
+   ```bash
+   companion health
+   companion ui true
+   companion tap 540 1200
+   companion screenshot screen.jpg
+   ```
+
+## AI Agent Skill Guide
+
+This repository includes a ready-to-use AI Agent Skill in [`skills/ai-companion/`](skills/ai-companion/) for autonomous agents, featuring zero-dependency CLI wrappers:
+
 - **Agent Playbook**: [`skills/ai-companion/SKILL.md`](skills/ai-companion/SKILL.md)
 - **API Reference**: [`skills/ai-companion/references/api_reference.md`](skills/ai-companion/references/api_reference.md)
-
-Quick execution example:
-```bash
-# Health check
-./skills/ai-companion/scripts/companion.sh health
-
-# Inspect UI tree
-./skills/ai-companion/scripts/companion.sh ui true
-
-# Tap coordinates
-./skills/ai-companion/scripts/companion.sh tap 540 1200
-```
+- **Bash & curl CLI**: [`skills/ai-companion/scripts/companion.sh`](skills/ai-companion/scripts/companion.sh)
+- **Python CLI**: [`skills/ai-companion/scripts/companion.py`](skills/ai-companion/scripts/companion.py)
+- **Windows Batch CLI**: [`skills/ai-companion/scripts/companion.cmd`](skills/ai-companion/scripts/companion.cmd)
 
 ## Usage
 
