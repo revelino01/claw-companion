@@ -3,6 +3,7 @@ package ai.openclaw.companion
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -170,6 +171,7 @@ class MainActivity : AppCompatActivity() {
             addressText.text = "http://localhost:${ClawForegroundService.actualPort}"
             toggleServiceBtn.text = "Stop"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_pause)
+            toggleServiceBtn.backgroundTintList = ColorStateList.valueOf(getColor(R.color.status_stopped))
 
             if (ScreenCaptureManager.isGranted) {
                 screenshotStatusText.text = "Screen capture: Active ✓"
@@ -188,6 +190,7 @@ class MainActivity : AppCompatActivity() {
             screenshotStatusText.visibility = View.GONE
             toggleServiceBtn.text = "Start"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_play)
+            toggleServiceBtn.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary))
         }
     }
 

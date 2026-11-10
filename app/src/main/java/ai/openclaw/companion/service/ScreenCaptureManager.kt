@@ -126,7 +126,7 @@ object ScreenCaptureManager {
             }, handler)
 
             virtualDisplay = mp.createVirtualDisplay(
-                "ClawCompanionCapture",
+                "AICompanionCapture",
                 w, h, metrics.densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader.surface,

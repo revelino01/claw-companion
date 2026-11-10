@@ -14,20 +14,32 @@
         android:padding="20dp"
         android:clipToPadding="false">
 
-        <!-- Hero: App Identity with larger icon and subtitle -->
+        <!-- Hero: App Identity with modern card icon and subtitle -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:layout_marginBottom="6dp">
 
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@drawable/ic_launcher_foreground"
-                android:layout_marginEnd="14dp"
-                android:importantForAccessibility="no" />
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="16dp"
+                app:cardBackgroundColor="@color/surface_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/surface_outline"
+                app:strokeWidth="1dp">
+
+                <ImageView
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_launcher_foreground"
+                    android:scaleType="fitCenter"
+                    android:importantForAccessibility="no" />
+            </com.google.android.material.card.MaterialCardView>
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -38,7 +50,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Claw Companion"
+                    android:text="@string/app_name"
                     android:textSize="24sp"
                     android:textColor="@color/text_primary"
                     android:fontFamily="sans-serif-medium" />
@@ -46,19 +58,19 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="OpenClaw's eyes and hands on your device"
+                    android:text="Local Device Automation for AI Agents"
                     android:textSize="12sp"
                     android:textColor="@color/text_secondary" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Status Banner: now has a top accent bar and more visual weight -->
+        <!-- Status Banner -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/statusCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="16dp"
             app:cardBackgroundColor="@color/surface_card"
             app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
@@ -70,7 +82,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <!-- Top accent bar that changes color with status (red = stopped, green = running) -->
+                <!-- Top accent bar that changes color with status -->
                 <View
                     android:id="@+id/statusAccentBar"
                     android:layout_width="match_parent"
@@ -113,7 +125,7 @@
                             android:layout_height="40dp"
                             android:text="Start"
                             android:textSize="13sp"
-                            app:backgroundTint="@color/claw_red"
+                            app:backgroundTint="@color/primary"
                             app:cornerRadius="20dp"
                             app:icon="@android:drawable/ic_media_play"
                             app:iconTint="@color/white"
@@ -126,9 +138,9 @@
                         android:layout_height="wrap_content"
                         android:text=""
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/accent"
                         android:fontFamily="monospace"
-                        android:layout_marginTop="6dp"
+                        android:layout_marginTop="8dp"
                         android:textIsSelectable="true" />
 
                     <TextView
@@ -150,8 +162,8 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="12dp">
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="14dp">
 
             <View
                 android:layout_width="0dp"
@@ -161,16 +173,17 @@
 
             <com.google.android.material.chip.Chip
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="32dp"
                 android:text="PERMISSIONS"
                 android:textSize="11sp"
+                android:letterSpacing="0.08"
                 android:textColor="@color/text_secondary"
                 app:chipBackgroundColor="@color/surface_card"
                 app:chipStrokeColor="@color/surface_outline"
                 app:chipStrokeWidth="1dp"
-                app:chipCornerRadius="18dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
+                app:chipCornerRadius="16dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
                 app:chipMinTouchTargetSize="0dp"
                 android:clickable="false"
                 android:focusable="false" />
@@ -187,9 +200,9 @@
             android:id="@+id/cardAccessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="10dp"
             app:cardBackgroundColor="@color/surface_card"
-            app:cardCornerRadius="12dp"
+            app:cardCornerRadius="14dp"
             app:cardElevation="0dp"
             app:strokeColor="@color/surface_outline"
             app:strokeWidth="1dp">
@@ -201,14 +214,13 @@
                 android:gravity="center_vertical"
                 android:padding="16dp">
 
-                <!-- Icon in a subtle circle background -->
                 <com.google.android.material.imageview.ShapeableImageView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
                     android:src="@drawable/ic_perm_accessibility"
                     android:scaleType="centerInside"
                     android:background="@color/surface_card_elevated"
-                    android:padding="6dp"
+                    android:padding="8dp"
                     android:layout_marginEnd="14dp"
                     app:shapeAppearanceOverlay="@style/CircleShape"
                     android:importantForAccessibility="no" />
@@ -230,12 +242,11 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Read screen and perform gestures"
+                        android:text="Read screen hierarchy and perform gestures"
                         android:textSize="11sp"
                         android:textColor="@color/text_secondary" />
                 </LinearLayout>
 
-                <!-- Badge in a circular background -->
                 <FrameLayout
                     android:layout_width="28dp"
                     android:layout_height="28dp"
@@ -259,6 +270,7 @@
                     android:layout_height="34dp"
                     android:text="Enable"
                     android:textSize="12sp"
+                    android:textColor="@color/text_primary"
                     app:cornerRadius="17dp"
                     app:strokeColor="@color/surface_outline" />
             </LinearLayout>
@@ -269,9 +281,9 @@
             android:id="@+id/cardNotification"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="10dp"
             app:cardBackgroundColor="@color/surface_card"
-            app:cardCornerRadius="12dp"
+            app:cardCornerRadius="14dp"
             app:cardElevation="0dp"
             app:strokeColor="@color/surface_outline"
             app:strokeWidth="1dp">
@@ -284,12 +296,12 @@
                 android:padding="16dp">
 
                 <com.google.android.material.imageview.ShapeableImageView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
                     android:src="@drawable/ic_perm_notification"
                     android:scaleType="centerInside"
                     android:background="@color/surface_card_elevated"
-                    android:padding="6dp"
+                    android:padding="8dp"
                     android:layout_marginEnd="14dp"
                     app:shapeAppearanceOverlay="@style/CircleShape"
                     android:importantForAccessibility="no" />
@@ -339,6 +351,7 @@
                     android:layout_height="34dp"
                     android:text="Enable"
                     android:textSize="12sp"
+                    android:textColor="@color/text_primary"
                     app:cornerRadius="17dp"
                     app:strokeColor="@color/surface_outline" />
             </LinearLayout>
@@ -349,9 +362,9 @@
             android:id="@+id/cardOverlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="10dp"
             app:cardBackgroundColor="@color/surface_card"
-            app:cardCornerRadius="12dp"
+            app:cardCornerRadius="14dp"
             app:cardElevation="0dp"
             app:strokeColor="@color/surface_outline"
             app:strokeWidth="1dp">
@@ -364,12 +377,12 @@
                 android:padding="16dp">
 
                 <com.google.android.material.imageview.ShapeableImageView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
                     android:src="@drawable/ic_perm_overlay"
                     android:scaleType="centerInside"
                     android:background="@color/surface_card_elevated"
-                    android:padding="6dp"
+                    android:padding="8dp"
                     android:layout_marginEnd="14dp"
                     app:shapeAppearanceOverlay="@style/CircleShape"
                     android:importantForAccessibility="no" />
@@ -391,7 +404,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Display floating windows"
+                        android:text="Display floating companion overlays"
                         android:textSize="11sp"
                         android:textColor="@color/text_secondary" />
                 </LinearLayout>
@@ -419,6 +432,7 @@
                     android:layout_height="34dp"
                     android:text="Enable"
                     android:textSize="12sp"
+                    android:textColor="@color/text_primary"
                     app:cornerRadius="17dp"
                     app:strokeColor="@color/surface_outline" />
             </LinearLayout>
@@ -429,11 +443,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:text="Claw Companion • OpenClaw"
+            android:text="AI Companion • Local Device Automation API"
             android:textSize="11sp"
             android:textColor="@color/text_secondary"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
 
     </LinearLayout>
 </ScrollView>

@@ -1,6 +1,10 @@
-# 🦞 Claw Companion
+# 🤖 AI Companion
 
-Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — replaces ADB with a local HTTP API for accessibility, gestures, screenshots, notifications, and more.
+A lightweight, high-performance Android companion app for autonomous AI agents (OpenClaw, Claude Computer Use, AutoGPT, LangChain, local LLMs, Termux agents, etc.) — provides a fast, secure local HTTP API for accessibility hierarchy inspection, UI automation gestures, screenshot capture, notifications, clipboard, SMS, calls, and device control.
+
+## Overview
+
+AI Companion runs entirely on your Android device as a foreground service with a local HTTP server bound to `127.0.0.1:18790`. It enables local AI agents (such as agents running directly in Termux or Python) or remote AI agents (via ADB port-forwarding or reverse proxy) to interact with Android applications just like a human user without requiring root.
 
 ## Features
 
@@ -37,23 +41,33 @@ Android companion app for [OpenClaw](https://github.com/openclaw/openclaw) — r
 ## Setup
 
 1. Install the APK.
-2. Enable **Accessibility Service** for Claw Companion.
-3. Enable **Notification Access** for Claw Companion.
+2. Enable **Accessibility Service** for AI Companion.
+3. Enable **Notification Access** for AI Companion.
 4. Enable **Draw Over Other Apps** (Overlay).
-5. Grant SMS, Contacts, and Call Log permissions.
+5. Grant SMS, Contacts, and Call Log permissions when prompted.
 6. *(Optional)* For secure/global settings editing:
    ```bash
    adb shell pm grant ai.openclaw.companion android.permission.WRITE_SECURE_SETTINGS
    ```
-7. Start the service in the app — tapping **Start** will launch the local HTTP server and prompt for screen capture permission:
+7. Start the service in the app — tapping **Start** launches the local HTTP server and prompts for screen capture permission:
    * If approved, the screenshot endpoint is active.
    * If declined, the server continues running normally with screenshots disabled. Simply toggle the service off and on again to re-prompt.
 
-## Usage from OpenClaw
+## Usage
 
-The server securely binds to `127.0.0.1:18790`. If connecting from a computer via ADB:
+The server securely binds to `127.0.0.1:18790`.
+
+### On-Device (e.g. Termux or Local Python)
+AI agents running locally on the device can query the API directly:
+```bash
+curl -s http://localhost:18790/health | jq
+```
+
+### Over ADB / USB / Wi-Fi
+If connecting an agent running on an external computer:
 ```bash
 adb forward tcp:18790 tcp:18790
+curl -s http://localhost:18790/health | jq
 ```
 
 ### Examples
@@ -72,7 +86,7 @@ curl -s -X POST http://localhost:18790/tap -H 'Content-Type: application/json' -
 curl -s -X POST http://localhost:18790/ui/click -H 'Content-Type: application/json' -d '{"viewId":"com.android.settings:id/button"}'
 
 # Type text into currently active input field
-curl -s -X POST http://localhost:18790/type -H 'Content-Type: application/json' -d '{"text":"Hello from OpenClaw!"}'
+curl -s -X POST http://localhost:18790/type -H 'Content-Type: application/json' -d '{"text":"Hello from AI Companion!"}'
 
 # Press back or home
 curl -s -X POST http://localhost:18790/press -H 'Content-Type: application/json' -d '{"key":"back"}'

@@ -38,7 +38,7 @@ class ClawForegroundService : Service() {
         }
 
         const val ACTION_STOP = "ai.openclaw.companion.ACTION_STOP"
-        const val CHANNEL_ID = "claw_companion_channel"
+        const val CHANNEL_ID = "ai_companion_channel"
         const val NOTIFICATION_ID = 10001
     }
 
@@ -74,7 +74,7 @@ class ClawForegroundService : Service() {
             val powerManager = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "ClawCompanion::ForegroundService"
+                "AICompanion::ForegroundService"
             ).apply {
                 setReferenceCounted(false)
                 acquire()

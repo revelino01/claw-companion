@@ -5,33 +5,46 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Background circle -->
+    <!-- Luminous background beacon card -->
     <path
-        android:fillColor="#FFDC2626"
-        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+        android:fillColor="#FF1C2640"
+        android:strokeColor="#FF2B3859"
+        android:strokeWidth="1.5"
+        android:pathData="M54,54m-32,0a32,32 0,1 1,64 0a32,32 0,1 1,-64 0"/>
 
-    <!-- Claw mark - three diagonal slashes -->
-    <!-- Left claw -->
+    <!-- Subtle companion orbit ring -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M36,70 L40,28 L44,28 L42,70 Z"/>
-    <!-- Center claw (tallest) -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M50,74 L54,22 L58,22 L56,74 Z"/>
-    <!-- Right claw -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M64,70 L68,28 L72,28 L70,70 Z"/>
+        android:fillColor="#00000000"
+        android:strokeColor="#336366F1"
+        android:strokeWidth="1.2"
+        android:pathData="M32,66 C28,48 42,32 62,28"/>
 
-    <!-- Claw tips - curved tops -->
+    <!-- Main AI Spark Star (Centered at 50, 56) -->
+    <!-- Indigo Spark Silhouette -->
+    <path
+        android:fillColor="#FF6366F1"
+        android:pathData="M50,31 Q50,56 75,56 Q50,56 50,81 Q50,56 25,56 Q50,56 50,31 Z"/>
+
+    <!-- Cyan Inner Flare -->
+    <path
+        android:fillColor="#FF38BDF8"
+        android:pathData="M50,39 Q50,56 67,56 Q50,56 50,73 Q50,56 33,56 Q50,56 50,39 Z"/>
+
+    <!-- White Core -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M38,28 Q42,20 46,28 L44,32 L40,32 Z"/>
+        android:pathData="M50,47 Q50,56 59,56 Q50,56 50,65 Q50,56 41,56 Q50,56 50,47 Z"/>
+
+    <!-- Companion Satellite Spark (Centered at 72, 34) -->
+    <path
+        android:fillColor="#FF0EA5E9"
+        android:pathData="M72,24 Q72,34 82,34 Q72,34 72,44 Q72,34 62,34 Q72,34 72,24 Z"/>
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M52,22 Q56,14 60,22 L58,26 L54,26 Z"/>
+        android:pathData="M72,28 Q72,34 78,34 Q72,34 72,40 Q72,34 66,34 Q72,34 72,28 Z"/>
+
+    <!-- Satellite Pulse Node (Centered at 33, 71) -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M66,28 Q70,20 74,28 L72,32 L68,32 Z"/>
+        android:fillColor="#FF818CF8"
+        android:pathData="M33,66 Q33,71 38,71 Q33,71 33,76 Q33,71 28,71 Q33,71 33,66 Z"/>
 </vector>

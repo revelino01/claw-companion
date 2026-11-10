@@ -298,7 +298,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
             if (!typed) {
                 // Fallback: set primary clip
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("claw", req.text))
+                clipboard.setPrimaryClip(ClipData.newPlainText("ai_companion", req.text))
             }
             true
         }
@@ -574,7 +574,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
         val text = body["text"] ?: return errorResponse(400, "Missing text")
 
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("claw", text))
+        clipboard.setPrimaryClip(ClipData.newPlainText("ai_companion", text))
         return json(ApiResponse(true))
     }
 

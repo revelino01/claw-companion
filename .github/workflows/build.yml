@@ -47,7 +47,7 @@ jobs:
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: claw-companion-debug
+          name: ai-companion-debug
           path: app/build/outputs/apk/debug/*.apk
 
       - name: Get version info
@@ -85,18 +85,18 @@ jobs:
       - name: Rename APK with version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          cp app/build/outputs/apk/debug/*.apk "claw-companion-${VERSION}.apk"
-          echo "APK_NAME=claw-companion-${VERSION}.apk" >> $GITHUB_ENV
+          cp app/build/outputs/apk/debug/*.apk "ai-companion-${VERSION}.apk"
+          echo "APK_NAME=ai-companion-${VERSION}.apk" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          name: Claw Companion ${{ steps.version.outputs.version }}
+          name: AI Companion ${{ steps.version.outputs.version }}
           body: |
-            ## Claw Companion ${{ steps.version.outputs.version }}
+            ## AI Companion ${{ steps.version.outputs.version }}
             
-            Android companion app for OpenClaw — replaces ADB with a local HTTP API.
+            Android companion app for AI agents — replaces ADB with a fast local HTTP automation API.
             
             ### Installation
             1. Download the APK below
@@ -105,7 +105,7 @@ jobs:
             4. Start the service — runs on `http://localhost:18790`
             
             ### API Endpoints
-            `/ui` `/tap` `/swipe` `/press` `/type` `/intent` `/notifications` `/sms` `/contacts` `/calls` `/clipboard` `/device` `/packages`
-          files: claw-companion-*.apk
+            `/ui` `/tap` `/swipe` `/press` `/type` `/intent` `/screenshot` `/notifications` `/sms` `/contacts` `/calls` `/clipboard` `/device` `/packages`
+          files: ai-companion-*.apk
           draft: false
           prerelease: false
