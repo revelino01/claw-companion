@@ -1,10 +1,8 @@
 package ai.openclaw.companion
 
 import android.Manifest
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -28,13 +26,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var addressText: TextView
+    private lateinit var screenshotStatusText: TextView
     private lateinit var toggleServiceBtn: com.google.android.material.button.MaterialButton
     private lateinit var statusDot: View
     private lateinit var statusAccentBar: View
     private lateinit var accessibilityBadge: TextView
     private lateinit var notificationBadge: TextView
     private lateinit var overlayBadge: TextView
-    private lateinit var screenshotBadge: TextView
 
     private var isServiceRunning = false
 
@@ -44,13 +42,13 @@ class MainActivity : AppCompatActivity() {
 
         statusText = findViewById(R.id.statusText)
         addressText = findViewById(R.id.addressText)
+        screenshotStatusText = findViewById(R.id.screenshotStatusText)
         toggleServiceBtn = findViewById(R.id.toggleServiceBtn)
         statusDot = findViewById(R.id.statusDot)
         statusAccentBar = findViewById(R.id.statusAccentBar)
         accessibilityBadge = findViewById(R.id.accessibilityBadge)
         notificationBadge = findViewById(R.id.notificationBadge)
         overlayBadge = findViewById(R.id.overlayBadge)
-        screenshotBadge = findViewById(R.id.screenshotBadge)
 
         // Permission buttons
         findViewById<Button>(R.id.enableAccessibilityBtn).setOnClickListener {
@@ -67,20 +65,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Screenshot permission button
-        findViewById<Button>(R.id.enableScreenshotBtn)?.setOnClickListener {
-            requestMediaProjection()
-        }
-
         // Request runtime permissions
         requestRuntimePermissions()
 
-        // Toggle service
+        // Toggle service: starting triggers both server and screen recording prompt
         toggleServiceBtn.setOnClickListener {
             if (isServiceRunning) {
                 stopClawService()
             } else {
                 startClawService()
+                if (!ScreenCaptureManager.isGranted) {
+                    requestMediaProjection()
+                }
             }
         }
     }
@@ -106,8 +102,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestMediaProjection() {
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION)
+        try {
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION)
+        } catch (_: Exception) {}
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -115,8 +113,12 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
                 ScreenCaptureManager.setPermissionResult(resultCode, data)
+            } else {
+                // User declined: do not stop the server, keep screenshot disabled
+                ScreenCaptureManager.releaseProjection()
             }
             updatePermissionStatuses()
+            updateServiceStatus()
         }
     }
 
@@ -139,12 +141,10 @@ class MainActivity : AppCompatActivity() {
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else true
-        val hasScreenshot = ScreenCaptureManager.isGranted || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && ClawAccessibilityService.instance != null)
 
         updateBadge(accessibilityBadge, hasAccessibility)
         updateBadge(notificationBadge, hasNotification)
         updateBadge(overlayBadge, hasOverlay)
-        updateBadge(screenshotBadge, hasScreenshot)
     }
 
     private fun updateBadge(badge: TextView, granted: Boolean) {
@@ -162,12 +162,22 @@ class MainActivity : AppCompatActivity() {
             addressText.text = "http://localhost:${ClawForegroundService.actualPort}"
             toggleServiceBtn.text = "Stop"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_pause)
+
+            if (ScreenCaptureManager.isGranted) {
+                screenshotStatusText.text = "Screen capture: Active ✓"
+                screenshotStatusText.setTextColor(getColor(R.color.status_running))
+            } else {
+                screenshotStatusText.text = "Screen capture: Disabled (restart to enable)"
+                screenshotStatusText.setTextColor(getColor(R.color.text_secondary))
+            }
+            screenshotStatusText.visibility = View.VISIBLE
         } else {
             statusText.text = "Stopped"
             statusText.setTextColor(getColor(R.color.status_stopped))
             statusDot.setBackgroundResource(R.drawable.status_dot_stopped)
             statusAccentBar.setBackgroundColor(getColor(R.color.status_stopped))
             addressText.text = ""
+            screenshotStatusText.visibility = View.GONE
             toggleServiceBtn.text = "Start"
             toggleServiceBtn.setIconResource(android.R.drawable.ic_media_play)
         }
@@ -184,11 +194,15 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
+        updateServiceStatus()
     }
 
     private fun stopClawService() {
         val intent = Intent(this, ClawForegroundService::class.java)
         intent.action = ClawForegroundService.ACTION_STOP
         startService(intent)
+        ScreenCaptureManager.releaseProjection()
+        updatePermissionStatuses()
+        updateServiceStatus()
     }
 }

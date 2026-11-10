@@ -374,13 +374,14 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
     // ─── Screenshot ────────────────────────────────────────────
 
     private fun screenshot(params: Map<String, String>): Response {
+        if (!ScreenCaptureManager.isGranted) {
+            return errorResponse(403, "Screenshot not granted. Turn the server off and on in Claw Companion to enable screen capture.")
+        }
         val formatParam = params["format"]?.lowercase() ?: "jpeg"
         val quality = params["quality"]?.toIntOrNull()?.coerceIn(10, 100) ?: 80
 
-        // High reliability: try native accessibility screenshot first (zero dialog popup, instant),
-        // fallback to MediaProjection if unavailable.
-        val bitmap = ClawAccessibilityService.instance?.takeScreenshot()
-            ?: ScreenCaptureManager.captureScreenshot(context)
+        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+            ?: ClawAccessibilityService.instance?.takeScreenshot()
             ?: return errorResponse(500, ScreenCaptureManager.lastError ?: "Capture failed")
 
         val (compressFormat, mimeType) = when (formatParam) {
@@ -425,8 +426,11 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
     // ─── OCR ────────────────────────────────────────────────────
 
     private fun ocr(params: Map<String, String>): Response {
-        val bitmap = ClawAccessibilityService.instance?.takeScreenshot()
-            ?: ScreenCaptureManager.captureScreenshot(context)
+        if (!ScreenCaptureManager.isGranted) {
+            return errorResponse(403, "Screenshot not granted. Turn the server off and on in Claw Companion to enable screen capture.")
+        }
+        val bitmap = ScreenCaptureManager.captureScreenshot(context)
+            ?: ClawAccessibilityService.instance?.takeScreenshot()
             ?: return errorResponse(500, "Screenshot failed: " + (ScreenCaptureManager.lastError ?: "unknown"))
 
         val inputImage = InputImage.fromBitmap(bitmap, 0)
@@ -884,6 +888,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
 
     private fun stopService(): Response {
         closeRecognizer()
+        ScreenCaptureManager.releaseProjection()
         val intent = Intent(context, ClawForegroundService::class.java).apply {
             action = ClawForegroundService.ACTION_STOP
         }

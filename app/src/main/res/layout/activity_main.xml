@@ -130,6 +130,16 @@
                         android:fontFamily="monospace"
                         android:layout_marginTop="6dp"
                         android:textIsSelectable="true" />
+
+                    <TextView
+                        android:id="@+id/screenshotStatusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Screen capture: Inactive"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -414,94 +424,15 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Screenshot -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cardScreenshot"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="@color/surface_card"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/surface_outline"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:padding="16dp">
-
-                <com.google.android.material.imageview.ShapeableImageView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:src="@drawable/ic_perm_screenshot"
-                    android:scaleType="centerInside"
-                    android:background="@color/surface_card_elevated"
-                    android:padding="6dp"
-                    android:layout_marginEnd="14dp"
-                    app:shapeAppearanceOverlay="@style/CircleShape"
-                    android:importantForAccessibility="no" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Screenshot Permission"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_primary"
-                        android:fontFamily="sans-serif-medium" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Capture and read screen content"
-                        android:textSize="11sp"
-                        android:textColor="@color/text_secondary" />
-                </LinearLayout>
-
-                <FrameLayout
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:layout_marginEnd="12dp"
-                    android:background="@drawable/badge_bg">
-
-                    <TextView
-                        android:id="@+id/screenshotBadge"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:text="✗"
-                        android:textSize="14sp"
-                        android:textColor="@color/status_stopped" />
-                </FrameLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/enableScreenshotBtn"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="34dp"
-                    android:text="Enable"
-                    android:textSize="12sp"
-                    app:cornerRadius="17dp"
-                    app:strokeColor="@color/surface_outline" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
         <!-- Footer info -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:text="Claw Companion v0.0.14  •  OpenClaw"
+            android:text="Claw Companion • OpenClaw"
             android:textSize="11sp"
             android:textColor="@color/text_secondary"
+            android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp" />
 
     </LinearLayout>

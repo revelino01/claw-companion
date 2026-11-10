@@ -94,6 +94,10 @@ object ScreenCaptureManager {
      * Creates VirtualDisplay + ImageReader, captures one frame, then tears down.
      */
     fun captureScreenshot(context: Context, width: Int? = null, height: Int? = null): Bitmap? {
+        if (!isGranted) {
+            lastError = "Screen capture permission not granted. Restart the service in the app to enable."
+            return null
+        }
         val mp = ensureMediaProjection(context) ?: return null
 
         val metrics = DisplayMetrics()
@@ -171,8 +175,12 @@ object ScreenCaptureManager {
     }
 
     fun releaseProjection() {
-        mediaProjection?.stop()
+        try {
+            mediaProjection?.stop()
+        } catch (_: Exception) {}
         mediaProjection = null
+        pendingResultData = null
+        pendingResultCode = 0
         isGranted = false
     }
 }
