@@ -786,10 +786,12 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
 
     private fun stopService(): Response {
         ScreenCaptureManager.releaseProjection()
+        ClawForegroundService.setServiceEnabled(context, false)
         val intent = Intent(context, ClawForegroundService::class.java).apply {
             action = ClawForegroundService.ACTION_STOP
         }
         context.startService(intent)
+        context.stopService(Intent(context, ClawForegroundService::class.java))
         return json(ApiResponse(true, "Stopping service"))
     }
 

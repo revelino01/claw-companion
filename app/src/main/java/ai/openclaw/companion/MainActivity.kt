@@ -199,6 +199,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startClawService() {
+        ClawForegroundService.setServiceEnabled(this, true)
         val intent = Intent(this, ClawForegroundService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -210,9 +211,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopClawService() {
-        val intent = Intent(this, ClawForegroundService::class.java)
-        intent.action = ClawForegroundService.ACTION_STOP
+        ClawForegroundService.setServiceEnabled(this, false)
+        val intent = Intent(this, ClawForegroundService::class.java).apply {
+            action = ClawForegroundService.ACTION_STOP
+        }
         startService(intent)
+        stopService(Intent(this, ClawForegroundService::class.java))
         ScreenCaptureManager.releaseProjection()
         window.decorView.postDelayed({ updateServiceStatus() }, 150)
         updatePermissionStatuses()

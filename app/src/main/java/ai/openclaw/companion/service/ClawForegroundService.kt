@@ -1,6 +1,7 @@
 package ai.openclaw.companion.service
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -22,7 +23,7 @@ class ClawForegroundService : Service() {
         @Volatile
         private var running = false
 
-        fun isRunning(): Boolean = running
+        fun isRunning(): Boolean = running && instance != null
 
         @Volatile
         var actualPort: Int = ClawApp.DEFAULT_PORT
@@ -40,6 +41,21 @@ class ClawForegroundService : Service() {
         const val ACTION_STOP = "ai.openclaw.companion.ACTION_STOP"
         const val CHANNEL_ID = "ai_companion_channel"
         const val NOTIFICATION_ID = 10001
+
+        private const val PREFS_NAME = "ai_companion_prefs"
+        private const val KEY_SERVICE_ENABLED = "service_enabled"
+
+        fun isServiceEnabled(context: Context): Boolean {
+            return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_SERVICE_ENABLED, false)
+        }
+
+        fun setServiceEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_SERVICE_ENABLED, enabled)
+                .apply()
+        }
     }
 
     private var server: ClawHttpServer? = null
@@ -48,13 +64,13 @@ class ClawForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        running = true
-        notifyStateChanged(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
+        // If system recreated service with null intent, or action is STOP, or user disabled service:
+        // do NOT start the server and shut down cleanly.
+        if (intent == null || intent.action == ACTION_STOP || !isServiceEnabled(this)) {
+            stopForegroundService()
             return START_NOT_STICKY
         }
 
@@ -86,7 +102,8 @@ class ClawForegroundService : Service() {
             startServer()
         }
 
-        return START_STICKY
+        // Never use START_STICKY: avoids Android OS spontaneously resurrecting the server on background kills
+        return START_NOT_STICKY
     }
 
     fun updateForegroundServiceTypeForMediaProjection() {
@@ -107,6 +124,7 @@ class ClawForegroundService : Service() {
             server = ClawHttpServer(ClawApp.DEFAULT_PORT, this)
             server?.start()
             actualPort = ClawApp.DEFAULT_PORT
+            running = true
             notifyStateChanged(true)
         } catch (e: Exception) {
             // Port might be in use, try alternative
@@ -114,14 +132,36 @@ class ClawForegroundService : Service() {
                 server = ClawHttpServer(ClawApp.DEFAULT_PORT + 1, this)
                 server?.start()
                 actualPort = ClawApp.DEFAULT_PORT + 1
+                running = true
                 notifyStateChanged(true)
             } catch (e2: Exception) {
-                stopSelf()
+                stopForegroundService()
             }
         }
     }
 
+    private fun stopForegroundService() {
+        setServiceEnabled(this, false)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (_: Exception) {}
+        stopSelf()
+    }
+
     override fun onDestroy() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (_: Exception) {}
         server?.stop()
         server = null
         try {
