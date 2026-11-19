@@ -4,6 +4,11 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/companion.py" ] && command -v python3 >/dev/null 2>&1; then
+    exec python3 "${SCRIPT_DIR}/companion.py" "$@"
+fi
+
 BASE_URL="${AI_COMPANION_URL:-http://127.0.0.1:18790}"
 
 usage() {
@@ -24,21 +29,26 @@ Commands:
   press <back|home|recents|power|notifications|quick_settings>
                              Trigger a system navigation/hardware key
   type <text> [viewId]       Type text into focused field (or specific viewId)
-  launch <package>           Launch an application (e.g. com.whatsapp)
+  launch <package_or_uri>    Launch an app package or deep-link URI
+  packages [query]           List or search installed packages
   screenshot [output.jpg]    Capture device screenshot
   notifications              List recent active notifications
   clipboard [text]           Get or set clipboard contents
   sms [limit]                Read recent SMS messages (default 25)
   contacts [query]           Search contacts
+  calls [limit]              Read call logs (default 25)
   stop                       Stop companion service remotely
 EOF
-    exit 1
+    exit "${1:-1}"
 }
 
-CMD="$1"
-shift || usage
+CMD="${1:-}"
+shift || usage 1
 
 case "$CMD" in
+    -h|--help|help)
+        usage 0
+        ;;
     health)
         curl -s "${BASE_URL}/health"
         echo ""
@@ -112,12 +122,22 @@ case "$CMD" in
         ;;
     launch)
         if [ -z "$1" ]; then
-            echo "Usage: companion.sh launch <package_name>"
+            echo "Usage: companion.sh launch <package_or_uri>"
             exit 1
+        fi
+        if [[ "$1" == *"://"* ]]; then
+            PAYLOAD=$(printf '{"action":"android.intent.action.VIEW","uri":%s}' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')")
+        else
+            PAYLOAD=$(printf '{"package":%s}' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')")
         fi
         curl -s -X POST "${BASE_URL}/intent" \
             -H "Content-Type: application/json" \
-            -d "{\"package\":\"$1\"}"
+            -d "$PAYLOAD"
+        echo ""
+        ;;
+    packages)
+        Q="${1:-}"
+        curl -s "${BASE_URL}/packages?q=${Q}&limit=100"
         echo ""
         ;;
     screenshot)
@@ -148,6 +168,11 @@ case "$CMD" in
     contacts)
         Q="${1:-}"
         curl -s "${BASE_URL}/contacts?q=${Q}&limit=50"
+        echo ""
+        ;;
+    calls)
+        LIMIT="${1:-25}"
+        curl -s "${BASE_URL}/calls?limit=${LIMIT}"
         echo ""
         ;;
     stop)

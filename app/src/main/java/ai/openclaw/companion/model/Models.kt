@@ -42,6 +42,7 @@ data class FindRequest(val viewId: String? = null, val text: String? = null)
 
 data class IntentRequest(
     val action: String? = null,
+    val uri: String? = null,
     val `package`: String? = null,
     val className: String? = null,
     val extras: Map<String, String>? = null

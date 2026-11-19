@@ -100,6 +100,7 @@ def main():
 
     # ui
     ui_parser = subparsers.add_parser("ui", help="Dump or query the accessibility UI hierarchy")
+    ui_parser.add_argument("prune", nargs="?", choices=["true", "false"], default=None, help="Prune empty container nodes (true/false, default: true)")
     ui_parser.add_argument("--find", help="Find node by text, description, or viewId")
     ui_parser.add_argument("--click", action="store_true", help="Click the first found match")
     ui_parser.add_argument("--depth", type=int, default=50, help="Max tree depth (default: 50)")
@@ -110,22 +111,31 @@ def main():
     tap_parser.add_argument("x", type=int, help="X coordinate")
     tap_parser.add_argument("y", type=int, help="Y coordinate")
 
+    # longpress
+    lp_parser = subparsers.add_parser("longpress", help="Long press at screen coordinates")
+    lp_parser.add_argument("x", type=int, help="X coordinate")
+    lp_parser.add_argument("y", type=int, help="Y coordinate")
+    lp_parser.add_argument("--duration", type=int, default=800, help="Duration in ms (default: 800)")
+
     # swipe
     swipe_parser = subparsers.add_parser("swipe", help="Perform a swipe gesture")
     swipe_parser.add_argument("x1", type=int, help="Start X")
     swipe_parser.add_argument("y1", type=int, help="Start Y")
     swipe_parser.add_argument("x2", type=int, help="End X")
     swipe_parser.add_argument("y2", type=int, help="End Y")
+    swipe_parser.add_argument("duration_pos", nargs="?", type=int, default=None, metavar="duration", help="Optional positional duration in ms")
     swipe_parser.add_argument("--duration", type=int, default=300, help="Duration in ms (default: 300)")
 
     # scroll
     scroll_parser = subparsers.add_parser("scroll", help="Scroll the screen or a container")
     scroll_parser.add_argument("direction", choices=["up", "down", "left", "right"], help="Scroll direction")
+    scroll_parser.add_argument("view_id_pos", nargs="?", default=None, metavar="viewId", help="Optional target viewId container")
     scroll_parser.add_argument("--id", dest="view_id", help="Target viewId container to scroll")
 
     # type
     type_parser = subparsers.add_parser("type", help="Type text into focused field or viewId")
     type_parser.add_argument("text", help="Text to input")
+    type_parser.add_argument("view_id_pos", nargs="?", default=None, metavar="viewId", help="Optional target viewId")
     type_parser.add_argument("--id", dest="view_id", help="Optional target viewId")
 
     # press
@@ -133,8 +143,17 @@ def main():
     press_parser.add_argument("key", choices=["back", "home", "recents", "power", "notifications", "quick_settings"])
 
     # launch
-    launch_parser = subparsers.add_parser("launch", help="Launch an app package")
-    launch_parser.add_argument("package", help="Package name (e.g. com.whatsapp, com.android.settings)")
+    launch_parser = subparsers.add_parser("launch", help="Launch an app package or deep-link URI")
+    launch_parser.add_argument("target", nargs="?", default=None, help="Package name (e.g. com.whatsapp) or deep-link URI")
+    launch_parser.add_argument("--package", help="Target application package name")
+    launch_parser.add_argument("--uri", help="Intent data URI / deep link")
+    launch_parser.add_argument("--action", help="Android intent action (defaults to VIEW when --uri is given)")
+
+    # packages
+    pkg_parser = subparsers.add_parser("packages", help="List or search installed packages")
+    pkg_parser.add_argument("query_pos", nargs="?", default=None, metavar="query", help="Optional package/app name query")
+    pkg_parser.add_argument("--query", "-q", default=None, help="Package or app name query")
+    pkg_parser.add_argument("--limit", type=int, default=100, help="Max packages to return (default: 100)")
 
     # screenshot
     ss_parser = subparsers.add_parser("screenshot", help="Capture a device screenshot")
@@ -153,18 +172,21 @@ def main():
 
     # sms
     sms_parser = subparsers.add_parser("sms", help="Read or send SMS")
-    sms_parser.add_argument("--limit", type=int, default=25, help="Number of messages to read")
+    sms_parser.add_argument("limit_pos", nargs="?", type=int, default=None, metavar="limit", help="Optional positional limit")
+    sms_parser.add_argument("--limit", type=int, default=25, help="Number of messages to read (default: 25)")
     sms_parser.add_argument("--send-to", help="Phone number to send SMS to")
     sms_parser.add_argument("--message", help="SMS text content")
 
     # contacts
     contacts_parser = subparsers.add_parser("contacts", help="Search device contacts")
-    contacts_parser.add_argument("--query", "-q", default="", help="Contact name query")
+    contacts_parser.add_argument("query_pos", nargs="?", default=None, metavar="query", help="Optional positional contact query")
+    contacts_parser.add_argument("--query", "-q", default=None, help="Contact name query")
     contacts_parser.add_argument("--limit", type=int, default=50, help="Max contacts to return")
 
     # calls
     calls_parser = subparsers.add_parser("calls", help="Read call logs")
-    calls_parser.add_argument("--limit", type=int, default=25, help="Max entries to return")
+    calls_parser.add_argument("limit_pos", nargs="?", type=int, default=None, metavar="limit", help="Optional positional limit")
+    calls_parser.add_argument("--limit", type=int, default=25, help="Max entries to return (default: 25)")
 
     # stop
     subparsers.add_parser("stop", help="Remotely stop the companion background service")
@@ -182,7 +204,7 @@ def main():
         print(json.dumps(res, indent=2))
 
     elif args.command == "ui":
-        prune = "false" if args.no_prune else "true"
+        prune = "false" if (args.no_prune or args.prune == "false") else "true"
         res = make_request(base_url, f"/ui?depth={args.depth}&prune={prune}")
         if not res.get("success"):
             print(json.dumps(res, indent=2))
@@ -213,22 +235,31 @@ def main():
         res = make_request(base_url, "/tap", method="POST", data={"x": args.x, "y": args.y})
         print(json.dumps(res, indent=2))
 
+    elif args.command == "longpress":
+        res = make_request(base_url, "/longpress", method="POST", data={
+            "x": args.x, "y": args.y, "duration": args.duration
+        })
+        print(json.dumps(res, indent=2))
+
     elif args.command == "swipe":
+        duration = args.duration_pos if args.duration_pos is not None else args.duration
         res = make_request(base_url, "/swipe", method="POST", data={
-            "x1": args.x1, "y1": args.y1, "x2": args.x2, "y2": args.y2, "duration": args.duration
+            "x1": args.x1, "y1": args.y1, "x2": args.x2, "y2": args.y2, "duration": duration
         })
         print(json.dumps(res, indent=2))
 
     elif args.command == "scroll":
+        view_id = args.view_id or args.view_id_pos
         res = make_request(base_url, "/scroll", method="POST", data={
-            "direction": args.direction, "viewId": args.view_id
+            "direction": args.direction, "viewId": view_id
         })
         print(json.dumps(res, indent=2))
 
     elif args.command == "type":
         data = {"text": args.text}
-        if args.view_id:
-            data["viewId"] = args.view_id
+        view_id = args.view_id or args.view_id_pos
+        if view_id:
+            data["viewId"] = view_id
         res = make_request(base_url, "/type", method="POST", data=data)
         print(json.dumps(res, indent=2))
 
@@ -237,7 +268,32 @@ def main():
         print(json.dumps(res, indent=2))
 
     elif args.command == "launch":
-        res = make_request(base_url, "/intent", method="POST", data={"package": args.package})
+        pkg = args.package
+        uri = args.uri
+        action = args.action
+        if args.target:
+            if "://" in args.target:
+                uri = uri or args.target
+            else:
+                pkg = pkg or args.target
+        if uri and not action:
+            action = "android.intent.action.VIEW"
+        data = {}
+        if pkg:
+            data["package"] = pkg
+        if action:
+            data["action"] = action
+        if uri:
+            data["uri"] = uri
+        if not data:
+            launch_parser.error("Provide a package name, URI, or --action")
+        res = make_request(base_url, "/intent", method="POST", data=data)
+        print(json.dumps(res, indent=2))
+
+    elif args.command == "packages":
+        query = args.query if args.query is not None else (args.query_pos or "")
+        q = urllib.parse.quote(query)
+        res = make_request(base_url, f"/packages?q={q}&limit={args.limit}")
         print(json.dumps(res, indent=2))
 
     elif args.command == "screenshot":
@@ -270,16 +326,19 @@ def main():
         if args.send_to and args.message:
             res = make_request(base_url, "/sms/send", method="POST", data={"phone": args.send_to, "message": args.message})
         else:
-            res = make_request(base_url, f"/sms?limit={args.limit}")
+            limit = args.limit_pos if args.limit_pos is not None else args.limit
+            res = make_request(base_url, f"/sms?limit={limit}")
         print(json.dumps(res, indent=2))
 
     elif args.command == "contacts":
-        q = urllib.parse.quote(args.query)
+        query = args.query if args.query is not None else (args.query_pos or "")
+        q = urllib.parse.quote(query)
         res = make_request(base_url, f"/contacts?q={q}&limit={args.limit}")
         print(json.dumps(res, indent=2))
 
     elif args.command == "calls":
-        res = make_request(base_url, f"/calls?limit={args.limit}")
+        limit = args.limit_pos if args.limit_pos is not None else args.limit
+        res = make_request(base_url, f"/calls?limit={limit}")
         print(json.dumps(res, indent=2))
 
     elif args.command == "stop":

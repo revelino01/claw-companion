@@ -46,6 +46,7 @@ echo "[2/4] Detecting AI harnesses..."
 
 # Target definitions: (Harness Name | Path)
 HARNESS_TARGETS=(
+    "Antigravity (Config)"  "$HOME/.gemini/config/skills/ai-companion"
     "Antigravity (Global)"  "$HOME/.gemini/antigravity-cli/skills/ai-companion"
     "Antigravity (.agents)" "$HOME/.agents/skills/ai-companion"
     "OpenClaw"              "$HOME/.openclaw/skills/ai-companion"
@@ -85,29 +86,33 @@ done
 echo "[4/4] Setting up global 'companion' CLI command..."
 
 CLI_SRC="$TMP_DIR/scripts/companion.sh"
+CLI_PY_SRC="$TMP_DIR/scripts/companion.py"
 CLI_INSTALLED=false
 
 if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX}/bin" ]; then
     # Termux environment
     cp "$CLI_SRC" "${PREFIX}/bin/companion"
-    chmod +x "${PREFIX}/bin/companion"
+    cp "$CLI_PY_SRC" "${PREFIX}/bin/companion.py"
+    chmod +x "${PREFIX}/bin/companion" "${PREFIX}/bin/companion.py"
     echo "  ✓ Installed CLI to ${PREFIX}/bin/companion"
     CLI_INSTALLED=true
 elif [ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
     cp "$CLI_SRC" "$HOME/.local/bin/companion"
-    chmod +x "$HOME/.local/bin/companion"
+    cp "$CLI_PY_SRC" "$HOME/.local/bin/companion.py"
+    chmod +x "$HOME/.local/bin/companion" "$HOME/.local/bin/companion.py"
     echo "  ✓ Installed CLI to $HOME/.local/bin/companion"
     CLI_INSTALLED=true
 elif [ -w "/usr/local/bin" ]; then
     cp "$CLI_SRC" "/usr/local/bin/companion"
-    chmod +x "/usr/local/bin/companion"
+    cp "$CLI_PY_SRC" "/usr/local/bin/companion.py"
+    chmod +x "/usr/local/bin/companion" "/usr/local/bin/companion.py"
     echo "  ✓ Installed CLI to /usr/local/bin/companion"
     CLI_INSTALLED=true
 fi
 
 if [ "$CLI_INSTALLED" = false ]; then
     echo "  ! Note: Could not find writable bin in PATH. You can call the script at:"
-    echo "    ~/.agents/skills/ai-companion/scripts/companion.sh"
+    echo "    ~/.gemini/config/skills/ai-companion/scripts/companion.sh"
 fi
 
 echo ""
@@ -116,7 +121,7 @@ echo "  🎉 Installation Complete! ($INSTALLED_COUNT harnesses configured)"
 echo "=========================================="
 echo ""
 echo "Supported harnesses configured:"
-echo "  • Antigravity  (~/.gemini/antigravity-cli/skills & ~/.agents/skills)"
+echo "  • Antigravity  (~/.gemini/config/skills, ~/.gemini/antigravity-cli/skills & ~/.agents/skills)"
 echo "  • OpenClaw     (~/.openclaw/skills)"
 echo "  • Hermes Agent (~/.hermes/skills)"
 echo "  • Pi Agent     (~/.pi/skills)"

@@ -43,11 +43,12 @@ try {
 
     $UserProfile = $env:USERPROFILE
     $Targets = @(
+        @{ Name = "Antigravity (Config)";  Path = Join-Path $UserProfile ".gemini\config\skills\ai-companion" },
         @{ Name = "Antigravity (Global)";  Path = Join-Path $UserProfile ".gemini\antigravity-cli\skills\ai-companion" },
         @{ Name = "Antigravity (.agents)"; Path = Join-Path $UserProfile ".agents\skills\ai-companion" },
-        @{ Name = "OpenClaw";             Path = Join-Path $UserProfile ".openclaw\skills\ai-companion" },
-        @{ Name = "Hermes Agent";         Path = Join-Path $UserProfile ".hermes\skills\ai-companion" },
-        @{ Name = "Pi Agent";             Path = Join-Path $UserProfile ".pi\skills\ai-companion" }
+        @{ Name = "OpenClaw";              Path = Join-Path $UserProfile ".openclaw\skills\ai-companion" },
+        @{ Name = "Hermes Agent";          Path = Join-Path $UserProfile ".hermes\skills\ai-companion" },
+        @{ Name = "Pi Agent";              Path = Join-Path $UserProfile ".pi\skills\ai-companion" }
     )
 
     # 3. Deploy Skill Files
@@ -89,7 +90,7 @@ try {
     Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Supported harnesses configured:"
-    Write-Host "  • Antigravity  (~/.gemini/antigravity-cli/skills & ~/.agents/skills)"
+    Write-Host "  • Antigravity  (~/.gemini/config/skills, ~/.gemini/antigravity-cli/skills & ~/.agents/skills)"
     Write-Host "  • OpenClaw     (~/.openclaw/skills)"
     Write-Host "  • Hermes Agent (~/.hermes/skills)"
     Write-Host "  • Pi Agent     (~/.pi/skills)"

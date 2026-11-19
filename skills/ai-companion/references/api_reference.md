@@ -83,10 +83,14 @@ Search for visible nodes by identifier or text.
   ```
 
 ### `POST /ui/click`
-Directly triggers an accessibility click action on a matched node.
+Directly triggers an accessibility click action on a matched node (or taps screen coordinates).
 - **Request Body**:
   ```json
   { "viewId": "com.example.app:id/send_btn" }
+  // or
+  { "text": "Send" }
+  // or
+  { "x": 540, "y": 1200 }
   ```
 
 ---
@@ -154,12 +158,14 @@ Enters text into an active input field or specific viewId.
 ## 4. App Intents & Screenshots
 
 ### `POST /intent`
-Launches an application by package name or starts an activity intent.
+Launches an application by package name, opens a deep-link URI, or starts an activity intent.
 - **Request Body**:
   ```json
   { "package": "com.whatsapp" }
   // or
   { "action": "android.intent.action.VIEW", "uri": "https://google.com" }
+  // or URI targeted at a specific package
+  { "package": "com.instagram.android", "action": "android.intent.action.VIEW", "uri": "https://instagram.com/zulk.a" }
   ```
 
 ### `GET /screenshot`

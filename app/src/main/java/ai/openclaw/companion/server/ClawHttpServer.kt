@@ -204,8 +204,12 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
 
         val success = when {
             req.viewId != null -> service.clickNode(req.viewId)
+            req.text != null -> {
+                val node = service.findNodesByText(req.text).firstOrNull()
+                node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+            }
             req.x != null && req.y != null -> service.tap(req.x, req.y)
-            else -> return errorResponse(400, "Provide viewId or x,y coordinates")
+            else -> return errorResponse(400, "Provide viewId, text, or x,y coordinates")
         }
         return json(ApiResponse(success))
     }
@@ -312,7 +316,10 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
 
         try {
             val intent = when {
-                req.action != null -> Intent(req.action)
+                req.action != null -> Intent(req.action).apply {
+                    req.uri?.let { data = Uri.parse(it) }
+                }
+                req.uri != null -> Intent(Intent.ACTION_VIEW, Uri.parse(req.uri))
                 req.`package` != null -> {
                     context.packageManager.getLaunchIntentForPackage(req.`package`)
                         ?: Intent(Intent.ACTION_MAIN).apply {
@@ -320,7 +327,7 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
                             setPackage(req.`package`)
                         }
                 }
-                else -> return errorResponse(400, "Provide action or package")
+                else -> return errorResponse(400, "Provide action, uri, or package")
             }
 
             req.`package`?.let { intent.setPackage(it) }
@@ -331,7 +338,11 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
 
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-            return json(ApiResponse(true, mapOf("action" to (intent.action ?: ""), "package" to (req.`package` ?: ""))))
+            return json(ApiResponse(true, mapOf(
+                "action" to (intent.action ?: ""),
+                "uri" to (req.uri ?: ""),
+                "package" to (req.`package` ?: "")
+            )))
         } catch (e: Exception) {
             return errorResponse(400, "Failed to launch: ${e.message}")
         }
@@ -466,8 +477,8 @@ class ClawHttpServer(port: Int, private val context: Context) : NanoHTTPD("127.0
     private fun sendSms(session: IHTTPSession): Response {
         val body = parseJsonBody(session)
             ?: return errorResponse(400, "Invalid request")
-        val address = body["address"] ?: return errorResponse(400, "Missing address")
-        val text = body["text"] ?: return errorResponse(400, "Missing text")
+        val address = body["phone"] ?: body["address"] ?: return errorResponse(400, "Missing phone or address")
+        val text = body["message"] ?: body["text"] ?: return errorResponse(400, "Missing message or text")
 
         return try {
             val smsManager = android.telephony.SmsManager.getDefault()

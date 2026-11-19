@@ -74,7 +74,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 
 The installer automatically:
 1. Deploys the skill definition ([`SKILL.md`](skills/ai-companion/SKILL.md)) and API schemas to:
-   - **Antigravity**: `~/.gemini/antigravity-cli/skills/ai-companion` and `~/.agents/skills/ai-companion`
+   - **Antigravity**: `~/.gemini/config/skills/ai-companion`, `~/.gemini/antigravity-cli/skills/ai-companion`, and `~/.agents/skills/ai-companion`
    - **OpenClaw**: `~/.openclaw/skills/ai-companion`
    - **Hermes Agent**: `~/.hermes/skills/ai-companion`
    - **Pi Agent**: `~/.pi/skills/ai-companion`

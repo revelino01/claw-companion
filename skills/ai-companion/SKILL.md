@@ -1,103 +1,131 @@
 ---
 name: ai-companion
-description: Automate Android device interactions via the local AI Companion HTTP server. Use to inspect the on-screen UI hierarchy, locate and click elements, tap coordinates, swipe/scroll, type text, capture screenshots, read notifications, and launch apps.
+description: Automate Android device interactions via the local AI Companion HTTP server and `companion` CLI. Use to inspect the on-screen UI hierarchy, find and click elements, tap coordinates, swipe/scroll, type text, capture screenshots, read notifications, and launch apps or deep links.
 ---
 
 # AI Companion Skill
 
 Automate and control Android devices through the local AI Companion HTTP API running on port `18790`.
 
-## 1. Quick Start & Connectivity
+## 1. Quick Start & CLI Entrypoints
 
 - **Local Endpoint**: `http://127.0.0.1:18790`
 - **Remote / ADB Endpoint**: If connecting from a computer, forward the port first:
   ```bash
   adb forward tcp:18790 tcp:18790
   ```
-- **CLI Helper**:
-  The skill includes two zero-dependency CLI tools under `scripts/`:
-  - `companion.sh` (Bash/curl wrapper — works on any Termux or Linux environment)
-  - `companion.py` (Python 3 CLI wrapper with advanced tree search)
+- **Global CLI (`companion`)**:
+  Use `companion` directly from `PATH` (delegates to `companion.py` when `python3` is installed, with a bash/curl fallback). Run `companion -h` or `companion <command> -h` for full options.
+- **Fallback Script Paths** (if `companion` is not in `PATH`):
+  - `~/.gemini/config/skills/ai-companion/scripts/companion.py` (Python 3 CLI — supports `--find`, `--click`, and all flags)
+  - `~/.agents/skills/ai-companion/scripts/companion.sh` (Bash wrapper / curl fallback)
 
 ### Health Check
 Always verify the companion is active before executing tasks:
 ```bash
-./skills/ai-companion/scripts/companion.sh health
-# or curl -s http://localhost:18790/health
+companion health
+# or curl -s http://127.0.0.1:18790/health
 ```
 Ensure `"accessibility": true` in the returned JSON.
 
 ---
 
-## 2. Choosing Between UI Hierarchy & Screenshots
+## 2. CLI Command Reference
+
+Run `companion -h` for top-level help or `companion <command> -h` for command-specific flags.
+
+| Command | Arguments & Flags | Description |
+| :--- | :--- | :--- |
+| `health` | — | Check server health, accessibility, and notification listener status |
+| `device` | — | Get screen resolution (`widthPixels`, `heightPixels`), model, and Android SDK |
+| `ui` | `[true\|false] [--find <query>] [--click] [--depth N] [--no-prune]` | Dump UI tree, search nodes by text/description/viewId, and optionally click the first match |
+| `tap` | `<x> <y>` | Tap exact screen coordinates |
+| `longpress` | `<x> <y> [--duration 800]` | Long press at coordinates |
+| `swipe` | `<x1> <y1> <x2> <y2> [--duration 300]` | Drag from `(x1, y1)` to `(x2, y2)` |
+| `scroll` | `<up\|down\|left\|right> [--id <viewId>]` | Scroll screen or target container |
+| `type` | `<text> [--id <viewId>]` | Enter text into currently focused input or target `viewId` |
+| `press` | `<back\|home\|recents\|power\|notifications\|quick_settings>` | Trigger system navigation or hardware action |
+| `launch` | `<package_or_uri> [--package pkg] [--uri uri] [--action act]` | Launch an app by package name or open a deep-link URI |
+| `packages` | `[query] [--query <q>] [--limit 100]` | List or search installed app package names |
+| `screenshot` | `[output.jpg] [--format jpeg\|png\|webp] [--quality 80]` | Capture screen pixels to a file |
+| `notifications` | `[--dismiss <key>] [--dismiss-all]` | Read active notifications or dismiss them |
+| `clipboard` | `[text]` | Get clipboard contents or set clipboard text |
+| `sms` | `[--limit 25] [--send-to <phone> --message <text>]` | Read recent SMS messages or send an SMS |
+| `contacts` | `[query] [--query <q>] [--limit 50]` | Search device contacts |
+| `calls` | `[limit] [--limit 25]` | Read recent call logs |
+| `stop` | — | Stop the companion foreground service |
+
+---
+
+## 3. Choosing Between UI Hierarchy & Screenshots
 
 | Strategy | When to Use | Advantages |
 | :--- | :--- | :--- |
-| **UI Hierarchy (`/ui?prune=true`)** | **Default choice** for apps, settings, forms, chat apps, and system UI. | Fast (<50ms), exact coordinates, semantic text search, no OCR needed. |
-| **Screenshot (`/screenshot`)** | Games, custom canvases, image viewers, maps, or visual verification. | Shows true pixel rendering when accessibility nodes are obscured. |
+| **UI Hierarchy (`companion ui`)** | **Default choice** for apps, settings, forms, chat apps, and system UI. | Fast (<50ms), exact bounds/centers, `--find` & `--click` support, no OCR needed. |
+| **Screenshot (`companion screenshot`)** | Games, custom canvases, image viewers, maps, or visual verification. | Shows true pixel rendering when accessibility nodes are obscured. |
 
 ---
 
-## 3. Standard Automation Workflows
+## 4. Standard Automation Workflows
 
-### Flow 1: Launch an App & Click a Button
-1. **Launch the application**:
+### Flow 1: Find Installed App & Launch (Package or Deep Link)
+1. **Find package name if unknown**:
    ```bash
-   ./skills/ai-companion/scripts/companion.sh launch com.whatsapp
+   companion packages instagram
    ```
-2. **Wait briefly (300-500ms) and dump the UI tree**:
+2. **Launch by package name or deep-link URI**:
    ```bash
-   ./skills/ai-companion/scripts/companion.sh ui true
-   ```
-3. **Calculate element center from `bounds`**:
-   Node bounds format: `"left,top,right,bottom"`
-   - `center_x = (left + right) / 2`
-   - `center_y = (top + bottom) / 2`
-4. **Tap the target element**:
-   ```bash
-   ./skills/ai-companion/scripts/companion.sh tap <center_x> <center_y>
+   companion launch com.instagram.android
+   # or open a URI / deep link directly:
+   companion launch "https://instagram.com/zulk.a"
+   # or specify both package and URI explicitly:
+   companion launch --package com.instagram.android --uri "https://instagram.com/zulk.a"
    ```
 
-### Flow 2: Form Input & Typing
-1. Tap the text field or target its `viewId`:
+### Flow 2: Locate & Click Elements Quickly
+1. **Find and click in one command**:
    ```bash
-   ./skills/ai-companion/scripts/companion.sh type "My Message" com.whatsapp:id/entry
+   companion ui --find "Search" --click
    ```
-2. If typing into an already focused input without specifying `viewId`:
+2. **Or inspect matching bounds/centers manually**:
    ```bash
-   ./skills/ai-companion/scripts/companion.sh type "My Message"
+   companion ui --find "Send"
+   companion tap <center_x> <center_y>
+   ```
+   Node bounds format is `"left,top,right,bottom"`; `companion ui --find` automatically computes `"center": [cx, cy]`.
+
+### Flow 3: Form Input & Typing
+1. Tap the text field first (or target its `viewId` directly):
+   ```bash
+   companion type "My Message" --id com.whatsapp:id/entry
+   ```
+2. If typing into an already focused input without specifying `--id`:
+   ```bash
+   companion type "My Message"
    ```
 3. Hide keyboard if necessary:
    ```bash
-   ./skills/ai-companion/scripts/companion.sh press back
+   companion press back
    ```
 
-### Flow 3: Scrolling & Lists
-1. Scroll down to discover off-screen elements:
-   ```bash
-   ./skills/ai-companion/scripts/companion.sh scroll down
-   ```
-2. Or use swipe gestures for precise drag distances:
-   ```bash
-   # Swipe up (scrolls content down) from y=2000 to y=600
-   ./skills/ai-companion/scripts/companion.sh swipe 720 2000 720 600 300
-   ```
-
-### Flow 4: Reading Notifications & OTP Codes
-Read incoming messages, push notifications, and 2FA verification codes:
+### Flow 4: Scrolling & Lists
 ```bash
-./skills/ai-companion/scripts/companion.sh notifications
+companion scroll down
+# Or precise swipe gesture (e.g., swipe up to scroll content down)
+companion swipe 720 2000 720 600 --duration 300
 ```
-Or check SMS directly:
+
+### Flow 5: Reading Notifications & OTP Codes
 ```bash
-./skills/ai-companion/scripts/companion.sh sms 5
+companion notifications
+companion sms --limit 5
 ```
 
 ---
 
-## 4. Key Navigation Reference
+## 5. Key Navigation Reference
 
-Use `press <key>` for hardware and system navigation:
+Use `companion press <key>` for hardware and system navigation:
 - `back`: Back button / dismiss modal or keyboard
 - `home`: Return to Android launcher home screen
 - `recents`: App switcher / recent apps overview
@@ -107,7 +135,7 @@ Use `press <key>` for hardware and system navigation:
 
 ---
 
-## 5. Robustness Guidelines
-- **Always Prune Empty Nodes**: Use `/ui?prune=true` (or `companion.sh ui true`) to avoid parsing thousands of empty layout wrappers.
-- **Dynamic Content**: After tapping buttons that trigger network requests or page transitions, pause 300ms before querying `/ui` again.
-- **Coordinate Scaling**: Always use the screen dimensions reported by `companion.sh device`.
+## 6. Robustness Guidelines
+- **Always Prune Empty Nodes**: `companion ui` prunes empty layout containers by default (`prune=true`). Pass `--no-prune` only if structural hierarchy debugging is required.
+- **Dynamic Content**: After tapping buttons or launching apps that trigger transitions, pause `0.5–2s` before querying `companion ui` again.
+- **Coordinate Scaling**: Always use the screen dimensions reported by `companion device` and the node centers returned by `companion ui --find`.
